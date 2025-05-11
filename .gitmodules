@@ -4,3 +4,6 @@
 [submodule "submodules/NKSR"]
 	path = submodules/NKSR
 	url = https://github.com/nv-tlabs/NKSR.git
+[submodule "submodules/CityGaussian"]
+	path = submodules/CityGaussian
+	url = https://github.com/Linketic/CityGaussian.git
