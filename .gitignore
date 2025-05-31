@@ -1,0 +1,5 @@
+/local_ws/Example_images
+/local_ws/nksr/mesh*
+/local_ws/vggt/.*
+/local_ws/vggt/input*
+/local_ws/pipelines/generated_data/
