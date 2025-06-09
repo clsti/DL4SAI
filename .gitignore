@@ -3,3 +3,4 @@
 /local_ws/vggt/.*
 /local_ws/vggt/input*
 /local_ws/pipelines/generated_data/
+*.pyc
