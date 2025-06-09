@@ -93,14 +93,11 @@ class VGGTproc:
         camera_matrices = self.predictions["extrinsic"]
         
         # create camera position tensor
-        pred_world_points_shape = pred_world_points.shape
-        self.camera_extrinsics = np.expand_dims(np.expand_dims(camera_matrices, axis=1), axis=2)
-        self.camera_extrinsics = np.tile(self.camera_extrinsics, (1, pred_world_points_shape[1], pred_world_points_shape[2], 1, 1))
+        self.camera_extrinsics = camera_matrices
 
         # TODO: add mask_sky (maybe also mask_black & mask_white)
 
         self.vertices_3d = pred_world_points.reshape(-1, 3)
-        self.camera_extrinsics = self.camera_extrinsics.reshape(-1, 3, 4)
 
         # Handle different image formats - check if images need transposing
         if images.ndim == 4 and images.shape[1] == 3:  # NCHW format
@@ -120,7 +117,6 @@ class VGGTproc:
 
         self.vertices_3d = self.vertices_3d[conf_mask]
         self.colors_rgb = self.colors_rgb[conf_mask]
-        self.camera_extrinsics = self.camera_extrinsics[conf_mask]
 
         # TODO: where to store glb file? if verbose
 

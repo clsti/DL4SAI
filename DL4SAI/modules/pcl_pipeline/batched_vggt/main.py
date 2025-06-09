@@ -98,14 +98,14 @@ class BatchedVGGT:
         """
         self.transformation_chain.append(self.to_SE3())
 
-        for i in range(len(self.batches)):
+        for i in range(len(self.batches) - 1):
             extr_curr = self.batched_pred[i]["extrinsics"]
             extr_next = self.batched_pred[i+1]["extrinsics"]
             size_curr = self.batches_size[i]
             size_next = self.batches_size[i+1]
 
-            extr_curr_batch = extr_curr[size_curr[0]:]  # ERROR: size is in image numbers and extr_curr is in points
-            extr_next_batch = extr_next[:size_next[0]-1]
+            extr_curr_batch = extr_curr[size_curr[0]:]
+            extr_next_batch = extr_next[:size_next[1]]
 
             H = self.get_average(extr_curr_batch, extr_next_batch)
             self.transformation_chain.append(H)
