@@ -142,4 +142,4 @@ class BatchedVGGT:
                 self.pcl_transformed.append(pcl_trans)
 
     def merge(self):
-        return self.merging.run(self.pcl_transformed)
+        return self.merging.run(self.pcl_transformed, self.batched_pred)
