@@ -68,9 +68,8 @@ class BatchedVGGT:
             translation_vector = np.zeros(3)
         else:
             assert H.shape == (3, 4), "Input H must be a 3x4 matrix [R | t]"
-            rotation_matrix = H[:,:2]
+            rotation_matrix = H[:,:3]
             translation_vector = H[:,3]
-            
 
         return SE3.from_components(rotation_matrix, translation_vector)
 
@@ -80,7 +79,7 @@ class BatchedVGGT:
         SE3_curr = [self.to_SE3(H) for H in extr_curr]
         SE3_next = [self.to_SE3(H) for H in extr_next]
 
-        SE3_trans = [SE3.inverse(H_curr) * H_next for H_curr, H_next in zip(SE3_curr, SE3_next)]
+        SE3_trans = [SE3.inverse(H_curr) @ H_next for H_curr, H_next in zip(SE3_curr, SE3_next)]
         Xi_trans = [SE3.log(H) for H in SE3_trans]
 
         if self.weight_flag is not None:
@@ -134,7 +133,7 @@ class BatchedVGGT:
                 self.pcl_transformed.append(pcl)
             else:
                 # Update cumulative transformation
-                cumulative_transform *= self.transformation_chain[i]
+                cumulative_transform = cumulative_transform @ self.transformation_chain[i]
                 if self.verbose:
                     self.transformation_chain_to_world.append(cumulative_transform)
 
