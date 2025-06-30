@@ -1,6 +1,8 @@
 import cv2
 import os
 import shutil
+import pickle
+
 import numpy as np
 from datetime import datetime
 
@@ -8,7 +10,7 @@ class Batching:
     """
     Split data input into batches
     """
-    def __init__(self, data_path, verbose=False, max_image_size=80, file_type=('.mp4'), image_path=None):
+    def __init__(self, data_path, verbose=False, use_cached=False, max_image_size=80, file_type=('.mp4'), image_path=None):
         """
         
         """
@@ -19,12 +21,19 @@ class Batching:
         self.verbose = verbose
         self.max_image_size = max_image_size
         self.max_per_video = max_image_size // 2
-        self.file_type = file_type        
+        self.file_type = file_type
 
         if image_path is None:
             self.image_path = os.path.join(data_path,'images')
         else:
             self.image_path = image_path
+
+        self.cache_path = os.path.join(self.image_path, 'batches_cache.pkl')
+
+        if use_cached and self._load_cached_batches():
+            if self.verbose:
+                print("Loaded batches from cache")
+            return
         
         if os.path.exists(self.image_path):
             shutil.rmtree(self.image_path)
@@ -36,6 +45,9 @@ class Batching:
         self.videos = self._load_video_files()
         self.frame_counts = self._get_video_frame_counts()
         self.batches, self.batches_size = self._create_batches()
+        self._save_batches_to_cache()
+        if self.verbose:
+            print("New batches created and cached.")
 
     def _load_video_files(self):
         """
@@ -207,6 +219,41 @@ class Batching:
                 print(f"Batch {i}: Left frames {n_left}, Right frames {n_right}, Total {n_left + n_right}")
 
         return batches, batches_size
+    
+    def _save_batches_to_cache(self):
+        try:
+            with open(self.cache_path, 'wb') as f:
+                pickle.dump((self.batches, self.batches_size), f)
+        except Exception as e:
+            if self.verbose:
+                print(f"Failed to save batch cache: {e}")
+
+    
+    def _load_cached_batches(self):
+        if not os.path.exists(self.cache_path):
+            if self.verbose:
+                print("Cache file not found.")
+            return False
+
+        try:
+            with open(self.cache_path, 'rb') as f:
+                self.batches, self.batches_size = pickle.load(f)
+
+            # Validate image paths
+            for batch in self.batches:
+                for img_path in batch:
+                    if not os.path.exists(img_path):
+                        if self.verbose:
+                            print(f"Missing image: {img_path}")
+                        return False
+
+            return True
+
+        except Exception as e:
+            if self.verbose:
+                print(f"Failed to load cache: {e}")
+            return False
+
 
     def get_batches(self):
         return self.batches
