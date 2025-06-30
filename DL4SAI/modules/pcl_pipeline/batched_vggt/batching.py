@@ -33,7 +33,7 @@ class Batching:
         if use_cached and self._load_cached_batches():
             if self.verbose:
                 print("Loaded batches from cache")
-            return self.image_path
+            return
         
         if os.path.exists(self.image_path):
             shutil.rmtree(self.image_path)
@@ -48,8 +48,6 @@ class Batching:
         self._save_batches_to_cache()
         if self.verbose:
             print("New batches created and cached.")
-        
-        return self.image_path
 
     def _load_video_files(self):
         """
@@ -234,7 +232,7 @@ class Batching:
     def _load_cached_batches(self):
         if not os.path.exists(self.cache_path):
             if self.verbose:
-                print("Cache file not found.")
+                print("Batch cache file not found.")
             return False
 
         try:
@@ -253,7 +251,7 @@ class Batching:
 
         except Exception as e:
             if self.verbose:
-                print(f"Failed to load cache: {e}")
+                print(f"Failed to load batch cache: {e}")
             return False
 
 
@@ -262,3 +260,6 @@ class Batching:
     
     def get_batches_size(self):
         return self.batches_size
+    
+    def get_image_path(self):
+        return self.image_path

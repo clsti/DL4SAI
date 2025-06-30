@@ -1,3 +1,5 @@
+import os
+import pickle
 import numpy as np
 from pymlg import SE3
 
@@ -12,16 +14,29 @@ class BatchedVGGT:
     Batched VGGT processing
     """
 
-    def __init__(self, data_path, verbose=False, use_cached=False, max_image_size=80, conf_thres=0.5, color=True, mode='concatenate', image_path=None):
+    def __init__(self, 
+                 data_path,
+                 verbose=False,
+                 use_cached_batches=False,
+                 use_cached_pcls=False,
+                 max_image_size=80,
+                 conf_thres=0.5,
+                 color=True,
+                 mode='concatenate',
+                 image_path=None):
         """
         
         """
 
         self.verbose = verbose
+        self.use_cached_pcls = use_cached_pcls
 
-        self.image_path = self.batching = Batching(data_path, verbose=verbose, use_cached=use_cached, max_image_size=max_image_size, image_path=image_path)
+        self.batching = Batching(data_path, verbose=verbose, use_cached=use_cached_batches, max_image_size=max_image_size, image_path=image_path)
         self.vggt_proc = VGGTproc(verbose=verbose, conf_thres=conf_thres)
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
+
+        self.image_path = self.batching.get_image_path()
+        self.cache_path = os.path.join(self.image_path, 'pcl_cache.pkl')
 
         # Get batches
         self.batches = self.batching.get_batches()
@@ -42,10 +57,15 @@ class BatchedVGGT:
         """
         
         """
-        self.batched_predictions()
-        self.create_trans_chain()
-        self.transform_pcls()
-        
+        if not self.use_cached_pcls:
+            self.batched_predictions()
+            self.create_trans_chain()
+            self.transform_pcls()
+            self._cache_data()
+        else:
+            self._load_cache()
+            print("Loaded pcls from cache")
+
         self.apply_scaling()
         pcl, colors = self.merge()
         return self.batched_pred, pcl, colors
@@ -147,6 +167,31 @@ class BatchedVGGT:
 
                 pcl_trans = self.SE3transform_pcl(cumulative_transform, pcl)
                 self.pcl_transformed.append(pcl_trans)
+
+    def _cache_data(self):
+        try:
+            with open(self.cache_path, 'wb') as f:
+                pickle.dump((self.batched_pred, self.pcl_transformed), f)
+        except Exception as e:
+            if self.verbose:
+                print(f"Failed to save pcl cache: {e}")
+
+    def _load_cache(self):
+        if not os.path.exists(self.cache_path):
+            if self.verbose:
+                print("Pcl cache file not found.")
+            return False
+
+        try:
+            with open(self.cache_path, 'rb') as f:
+                self.batched_pred, self.pcl_transformed = pickle.load(f)
+            
+            return True
+
+        except Exception as e:
+            if self.verbose:
+                print(f"Failed to load pcl cache: {e}")
+            return False
 
     def apply_scaling(self):
         scaling = self.scaling.run()

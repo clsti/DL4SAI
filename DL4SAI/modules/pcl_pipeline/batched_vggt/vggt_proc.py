@@ -94,7 +94,7 @@ class VGGTproc:
         
         # store extrinsics & intrinsics
         self.camera_extrinsics = camera_matrices
-        self.intrinsics = self.predictions["intrinsics"]
+        self.intrinsics = self.predictions["intrinsic"]
 
         # TODO: add mask_sky (maybe also mask_black & mask_white)
 
