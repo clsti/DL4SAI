@@ -6,11 +6,12 @@ class Merging:
     """
     Merge batches of point clouds
     """
-    def __init__(self, mode='concatenate', verbose=False):
+    def __init__(self, mode='concatenate', verbose=False, color=True):
         """
         
         """
         self.verbose = verbose
+        self.color = color
         if mode in ['concatenate']:
             self.mode = mode
         else:
@@ -31,7 +32,13 @@ class Merging:
         
         """
         colors = np.array([])
-        if self.verbose:
+        if self.color:
+            for i, batch in enumerate(batched_pred):
+                if i == 0:
+                    colors = batch["colors"]
+                else:
+                    colors = np.vstack([colors, batch["colors"]])
+        else:
             N = len(batched_pred)
             cmap = plt.get_cmap('tab20')
             color_map = [tuple(int(255 * c) for c in cmap(i % cmap.N)[:3]) for i in range(N)]
@@ -41,10 +48,4 @@ class Merging:
                 else:
                     colors = np.vstack([colors, np.tile(color_map[i], (batch["colors"].shape[0], 1))])
 
-        else:
-            for i, batch in enumerate(batched_pred):
-                if i == 0:
-                    colors = batch["colors"]
-                else:
-                    colors = np.vstack([colors, batch["colors"]])
         return np.vstack(pcl_list), colors
