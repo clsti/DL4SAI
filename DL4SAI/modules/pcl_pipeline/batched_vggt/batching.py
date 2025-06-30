@@ -33,7 +33,7 @@ class Batching:
         if use_cached and self._load_cached_batches():
             if self.verbose:
                 print("Loaded batches from cache")
-            return
+            return self.image_path
         
         if os.path.exists(self.image_path):
             shutil.rmtree(self.image_path)
@@ -48,6 +48,8 @@ class Batching:
         self._save_batches_to_cache()
         if self.verbose:
             print("New batches created and cached.")
+        
+        return self.image_path
 
     def _load_video_files(self):
         """

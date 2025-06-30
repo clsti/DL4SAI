@@ -12,14 +12,14 @@ class BatchedVGGT:
     Batched VGGT processing
     """
 
-    def __init__(self, data_path, verbose=False, use_cached=False, max_image_size=80, conf_thres=0.5, color=True, mode='concatenate'):
+    def __init__(self, data_path, verbose=False, use_cached=False, max_image_size=80, conf_thres=0.5, color=True, mode='concatenate', image_path=None):
         """
         
         """
 
-        self.verbose=verbose
+        self.verbose = verbose
 
-        self.batching = Batching(data_path, verbose=verbose, use_cached=use_cached, max_image_size=max_image_size)
+        self.image_path = self.batching = Batching(data_path, verbose=verbose, use_cached=use_cached, max_image_size=max_image_size, image_path=image_path)
         self.vggt_proc = VGGTproc(verbose=verbose, conf_thres=conf_thres)
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
 

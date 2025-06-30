@@ -2,7 +2,7 @@
 
 
 class CityGaussianAdapter:
-    def _init__(self):
+    def _init__(self, image_path):
         pass
 
 

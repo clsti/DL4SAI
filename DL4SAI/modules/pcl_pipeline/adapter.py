@@ -4,7 +4,7 @@ from densify_pipeline.citygaussian_adapter import CityGaussianAdapter
 
 
 class Adapter:
-    def __init__(self, densification_mode, **kwargs):
+    def __init__(self, densification_mode, image_path, **kwargs):
 
         self.densification_mode = densification_mode
         
@@ -13,7 +13,7 @@ class Adapter:
             self.densification_pipeline = NKSRAdapter()
         elif self.densification_mode == "CityGaussian":
             # parameter extraction fro CityGaussian
-            self.densification_pipeline = CityGaussianAdapter()
+            self.densification_pipeline = CityGaussianAdapter(image_path)
         else:
             raise NotImplementedError(f"Densification mode '{self.densification_mode}' is not implemented.")
     

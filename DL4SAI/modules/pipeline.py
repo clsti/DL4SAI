@@ -11,6 +11,7 @@ class Pipeline:
                  use_cached=False,
                  max_image_size=80,
                  conf_thres=0.5,
+                 image_path=None,
                  color=True,
                  mode='concatenate', 
                  densification_mode='CityGaussian'):
@@ -20,6 +21,7 @@ class Pipeline:
         self.use_cached = use_cached
         self.max_image_size = max_image_size
         self.conf_thres = conf_thres
+        self.image_path = image_path
         self.color = color
         self.mode = mode
         self.densification_mode = densification_mode
@@ -29,10 +31,11 @@ class Pipeline:
                                         use_cached=use_cached,
                                         max_image_size=max_image_size,
                                         conf_thres=conf_thres,
+                                        image_path=image_path,
                                         color=color,
                                         mode=mode)
         
-        self.adapter = Adapter(densification_mode)
+        self.adapter = Adapter(densification_mode, self.batched_vggt.image_path)
 
     def run(self):
         
