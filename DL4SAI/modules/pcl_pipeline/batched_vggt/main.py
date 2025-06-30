@@ -4,6 +4,7 @@ from pymlg import SE3
 from batching import Batching
 from vggt_proc import VGGTproc
 from merging import Merging
+from scaling.main import Scaling
 
 
 class BatchedVGGT:
@@ -34,6 +35,9 @@ class BatchedVGGT:
 
         self.weight_flag = 2.0 # weight or None for no weight
 
+        # Scaling
+        self.scaling = Scaling(self.batches)
+
     def run(self):
         """
         
@@ -41,7 +45,10 @@ class BatchedVGGT:
         self.batched_predictions()
         self.create_trans_chain()
         self.transform_pcls()
-        return self.merge()
+        
+        self.apply_scaling()
+        pcl, colors = self.merge()
+        return self.batched_pred, pcl, colors
 
 
     def batched_predictions(self):
@@ -51,11 +58,12 @@ class BatchedVGGT:
         # process batches
         for images in self.batches:
             # run vggt
-            vertices, colors, extrinsics = self.vggt_proc.run(images)
+            vertices, colors, extrinsics, intrinsics = self.vggt_proc.run(images)
             predictions = {
                 "vertices": vertices,
                 "colors": colors,
                 "extrinsics": extrinsics,
+                "intrinsics": intrinsics,
             }
             self.batched_pred.append(predictions)
 
@@ -139,6 +147,11 @@ class BatchedVGGT:
 
                 pcl_trans = self.SE3transform_pcl(cumulative_transform, pcl)
                 self.pcl_transformed.append(pcl_trans)
+
+    def apply_scaling(self):
+        scaling = self.scaling.run()
+
+        self.pcl_transformed = self.pcl_transformed * scaling
 
     def merge(self):
         return self.merging.run(self.pcl_transformed, self.batched_pred)

@@ -41,14 +41,14 @@ class VGGTproc:
         self.predictions = None
         self.vertices_3d = None
         self.camera_extrinsics = None
+        self.intrinsics = None
         self.colors_rgb = None
 
     def run(self, image_paths, target_file=None):
         self._proc(image_paths)
         self._post_proc(target_file)
-        self._apply_scaling()
 
-        return self.vertices_3d, self.colors_rgb, self.camera_extrinsics
+        return self.vertices_3d, self.colors_rgb, self.camera_extrinsics, self.intrinsics
 
     def _proc(self, image_paths):
         # preprocess images
@@ -92,8 +92,9 @@ class VGGTproc:
         # Use extrinsic matrices instead of pred_extrinsic_list
         camera_matrices = self.predictions["extrinsic"]
         
-        # create camera position tensor
+        # store extrinsics & intrinsics
         self.camera_extrinsics = camera_matrices
+        self.intrinsics = self.predictions["intrinsics"]
 
         # TODO: add mask_sky (maybe also mask_black & mask_white)
 
@@ -163,13 +164,3 @@ class VGGTproc:
             scene_3d = apply_scene_alignment(scene_3d, extrinsics_matrices)
 
             scene_3d.export(file_obj=target_file)
-
-    def _apply_scaling(self):
-        # TODO: add scaling
-        dummy_size = 20.0
-        dummy_scalar_x = np.ptp(self.vertices_3d, axis=0)[0]
-
-        self.scaling_factor = dummy_size/dummy_scalar_x
-        self.scaling_factor = 1.0
-        self.vertices_3d = self.vertices_3d * self.scaling_factor
-        self.camera_extrinsics[:,:,3] = self.camera_extrinsics[:,:,3] * self.scaling_factor
