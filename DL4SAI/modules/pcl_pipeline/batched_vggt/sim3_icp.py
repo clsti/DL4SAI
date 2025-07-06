@@ -1,20 +1,26 @@
+import os
 import numpy as np
 import open3d as o3d
 
 class Sim3ICP:
-    def __init__(self, verbose=False, correct_rotation=True):
+    def __init__(self, pcls_path, verbose=False, correct_rotation=True):
         """
         
         """
 
+        self.pcls_path = pcls_path
         self.verbose = verbose
         self.correct_rotation = correct_rotation
         self.transformation_chain_to_world = []
 
+        if self.verbose:
+            os.makedirs(os.path.join(self.pcls_path, "initial"), exist_ok=True)
+            os.makedirs(os.path.join(self.pcls_path, "trsf"), exist_ok=True)
+
 
     def run(self, pcl_transformed, batched_pred):
         pairwise_transforms = self.compute_pairwise_transforms(pcl_transformed, batched_pred)
-        pcl = self.transform_pcls(pcl_transformed, pairwise_transforms)
+        pcl = self.transform_pcls(pcl_transformed, pairwise_transforms, batched_pred)
 
         return pcl
     
@@ -34,6 +40,16 @@ class Sim3ICP:
 
             tgt = tgt_raw[tgt_vid_sizes[1]:].reshape(-1, 3)
             src= src_raw[:src_vid_sizes[0]].reshape(-1, 3)
+
+            if self.verbose:
+                tgt_color = batched_pred[i]["colors"]
+                src_color = batched_pred[j]["colors"]
+
+                tgt_name = os.path.join(self.pcls_path, "initial", f"pcd_{j}.ply")
+                src_name = os.path.join(self.pcls_path, "initial", f"pcd_{i}.ply")
+
+                self.to_pcd_file(tgt_raw.reshape(-1, 3), tgt_color, tgt_name)
+                self.to_pcd_file(src_raw.reshape(-1, 3), src_color, src_name)
 
             if self.correct_rotation:
                 s, R, t = self.umeyama(src, tgt)
@@ -126,6 +142,15 @@ class Sim3ICP:
 
         return s, R, t
 
+    def to_pcd_file(self, pcl, color, path):
+        """
+        
+        """
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pcl)
+        pcd.colors = o3d.utility.Vector3dVector(color/255.0)
+        o3d.io.write_point_cloud(path, pcd)
+
     def to_transformation_matrix(self, s, R, t):
         """
         Build a transformation matrix from scale, rotation, and translation.
@@ -149,7 +174,7 @@ class Sim3ICP:
         points_trans = points_trans_h[:, :3].reshape(orig_shape)
         return points_trans
     
-    def transform_pcls(self, pcl_list, pairwise_transforms):
+    def transform_pcls(self, pcl_list, pairwise_transforms, batched_pred):
         """
         Transform all point clouds into the frame of pcl_list[0].
 
@@ -163,6 +188,10 @@ class Sim3ICP:
         pcl_transformed = [pcl_list[0].copy()]
         cumulative_transform = np.eye(4)
 
+        if self.verbose:
+            path = os.path.join(self.pcls_path, "trsf", f"pcd_0.ply")
+            self.to_pcd_file(pcl_list[0].reshape(-1, 3), batched_pred[0]["colors"], path)
+
         for (i, j), (s, R, t) in pairwise_transforms.items():
             if self.verbose:
                 self.transformation_chain_to_world.append(cumulative_transform)
@@ -175,6 +204,12 @@ class Sim3ICP:
             if self.verbose:
                 self.transformation_chain_to_world.append(cumulative_transform)
             pcl_trans = self.sim3_transformation(pcl_list[j], cumulative_transform)
+
+            if self.verbose:
+                color = batched_pred[j]["colors"]
+                tgt_name = os.path.join(self.pcls_path, "trsf", f"pcd_{j}.ply")
+                self.to_pcd_file(pcl_trans.reshape(-1, 3), color, tgt_name)
+
             pcl_transformed.append(pcl_trans)
 
         return pcl_transformed

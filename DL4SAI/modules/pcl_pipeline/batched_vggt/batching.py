@@ -10,7 +10,7 @@ class Batching:
     """
     Split data input into batches
     """
-    def __init__(self, data_path, verbose=False, use_cached=False, max_image_size=80, file_type=('.mp4'), image_path=None):
+    def __init__(self, data_path, image_path, verbose=False, use_cached=False, max_image_size=80, file_type=('.mp4')):
         """
         
         """
@@ -22,11 +22,7 @@ class Batching:
         self.max_image_size = max_image_size
         self.max_per_video = max_image_size // 2
         self.file_type = file_type
-
-        if image_path is None:
-            self.image_path = os.path.join(data_path,'images')
-        else:
-            self.image_path = image_path
+        self.image_path = image_path
 
         self.cache_path = os.path.join(self.image_path, 'batches_cache.pkl')
 

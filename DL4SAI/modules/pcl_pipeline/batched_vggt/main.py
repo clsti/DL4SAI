@@ -38,13 +38,18 @@ class BatchedVGGT:
         if trf_mode not in ['SE3', 'rotation']:
             print(f"[Warning] Unsupported trf_mode '{trf_mode}'. Expected 'SE3' or 'rotation' (default: SE3).")
 
-        self.batching = Batching(data_path, verbose=verbose, use_cached=use_cached_batches, max_image_size=max_image_size, image_path=image_path)
+        if image_path is None:
+            self.image_path = os.path.join(data_path,'generated_data/images')
+            self.pcls_path = os.path.join(data_path,'generated_data/pcls')
+        else:
+            self.image_path = os.path.join(image_path,'images')
+            self.pcls_path = os.path.join(image_path,'pcls')
+        self.cache_path = os.path.join(self.image_path, 'pcl_cache.pkl')
+
+        self.batching = Batching(data_path, self.image_path, verbose=verbose, use_cached=use_cached_batches, max_image_size=max_image_size)
         self.vggt_proc = VGGTproc(verbose=verbose, conf_thres=conf_thres)
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
-        self.glob_align = Sim3ICP(verbose=verbose, correct_rotation=correct_rotation)
-
-        self.image_path = self.batching.get_image_path()
-        self.cache_path = os.path.join(self.image_path, 'pcl_cache.pkl')
+        self.glob_align = Sim3ICP(self.pcls_path, verbose=verbose, correct_rotation=correct_rotation)
 
         # Get batches
         self.batches = self.batching.get_batches()
