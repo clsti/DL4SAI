@@ -71,12 +71,12 @@ class BatchedVGGT:
             self.batched_predictions()
             self.create_trans_chain()
             self.transform_pcls()
+            self.pcl_trf_align = self.glob_align.run(self.pcl_transformed, self.batched_pred)
             self._cache_data()
         else:
             self._load_cache()
             print("Loaded pcls from cache")
 
-        self.pcl_trf_align = self.glob_align.run(self.pcl_transformed, self.batched_pred)
         self.apply_scaling()
         pcl, colors = self.merge()
         return self.batched_pred, pcl, colors
@@ -203,7 +203,7 @@ class BatchedVGGT:
     def _cache_data(self):
         try:
             with open(self.cache_path, 'wb') as f:
-                pickle.dump((self.batched_pred, self.pcl_transformed, self.transformation_chain), f)
+                pickle.dump((self.batched_pred, self.pcl_transformed, self.transformation_chain, self.pcl_trf_align), f)
         except Exception as e:
             if self.verbose:
                 print(f"Failed to save pcl cache: {e}")
@@ -216,7 +216,7 @@ class BatchedVGGT:
 
         try:
             with open(self.cache_path, 'rb') as f:
-                self.batched_pred, self.pcl_transformed, self.transformation_chain = pickle.load(f)
+                self.batched_pred, self.pcl_transformed, self.transformation_chain, self.pcl_trf_align = pickle.load(f)
             
             return True
 
