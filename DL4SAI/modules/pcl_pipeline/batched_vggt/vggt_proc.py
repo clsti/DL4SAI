@@ -39,6 +39,7 @@ class VGGTproc:
         self.model = VGGT.from_pretrained("facebook/VGGT-1B").to(self.device)
 
         self.predictions = None
+        self.vertices_raw = None
         self.vertices_3d = None
         self.camera_extrinsics = None
         self.intrinsics = None
@@ -48,7 +49,7 @@ class VGGTproc:
         self._proc(image_paths)
         self._post_proc(target_file)
 
-        return self.vertices_3d, self.colors_rgb, self.camera_extrinsics, self.intrinsics
+        return self.vertices_raw, self.vertices_3d, self.colors_rgb, self.conf, self.camera_extrinsics, self.intrinsics
 
     def _proc(self, image_paths):
         # preprocess images
@@ -98,7 +99,9 @@ class VGGTproc:
 
         # TODO: add mask_sky (maybe also mask_black & mask_white)
 
+        self.vertices_raw = pred_world_points
         self.vertices_3d = pred_world_points.reshape(-1, 3)
+        self.conf = pred_world_points_conf
 
         # Handle different image formats - check if images need transposing
         if images.ndim == 4 and images.shape[1] == 3:  # NCHW format

@@ -48,4 +48,6 @@ class Merging:
                 else:
                     colors = np.vstack([colors, np.tile(color_map[i], (batch["colors"].shape[0], 1))])
 
-        return np.vstack(pcl_list), colors
+        pcl_list_reshaped = [pcl.reshape(-1, 3) for pcl in pcl_list]
+
+        return np.vstack(pcl_list_reshaped), colors

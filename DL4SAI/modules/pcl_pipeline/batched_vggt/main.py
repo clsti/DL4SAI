@@ -7,6 +7,7 @@ from batching import Batching
 from vggt_proc import VGGTproc
 from merging import Merging
 from scaling.main import Scaling
+from sim3_icp import Sim3ICP
 
 
 class BatchedVGGT:
@@ -23,17 +24,24 @@ class BatchedVGGT:
                  conf_thres=0.5,
                  color=True,
                  mode='concatenate',
-                 image_path=None):
+                 trf_mode='SE3',
+                 image_path=None,
+                 correct_rotation=True):
         """
         
         """
 
         self.verbose = verbose
         self.use_cached_pcls = use_cached_pcls
+        self.trf_mode = trf_mode
+
+        if trf_mode not in ['SE3', 'rotation']:
+            print(f"[Warning] Unsupported trf_mode '{trf_mode}'. Expected 'SE3' or 'rotation' (default: SE3).")
 
         self.batching = Batching(data_path, verbose=verbose, use_cached=use_cached_batches, max_image_size=max_image_size, image_path=image_path)
         self.vggt_proc = VGGTproc(verbose=verbose, conf_thres=conf_thres)
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
+        self.glob_align = Sim3ICP(verbose=verbose, correct_rotation=correct_rotation)
 
         self.image_path = self.batching.get_image_path()
         self.cache_path = os.path.join(self.image_path, 'pcl_cache.pkl')
@@ -45,7 +53,9 @@ class BatchedVGGT:
         self.batched_pred = []
 
         self.transformation_chain = []
-        self.pcl_transformed = []
+        self.pcl_transformed = []  # shape: (n, h, w, 3)
+        self.pcl_trf_align = []  # shape: (n, h, w, 3)
+        self.pcl_trf_align_scaled = []  # shape: (n, h, w, 3)
         self.transformation_chain_to_world = []
 
         self.weight_flag = 2.0 # weight or None for no weight
@@ -66,6 +76,7 @@ class BatchedVGGT:
             self._load_cache()
             print("Loaded pcls from cache")
 
+        self.pcl_trf_align = self.glob_align.run(self.pcl_transformed, self.batched_pred)
         self.apply_scaling()
         pcl, colors = self.merge()
         return self.batched_pred, pcl, colors
@@ -76,12 +87,15 @@ class BatchedVGGT:
         
         """
         # process batches
-        for images in self.batches:
+        for i, images in enumerate(self.batches):
             # run vggt
-            vertices, colors, extrinsics, intrinsics = self.vggt_proc.run(images)
+            vertices_raw, vertices, colors, conf, extrinsics, intrinsics = self.vggt_proc.run(images)
             predictions = {
+                "vertices_raw": vertices_raw,
+                "vid_img_sizes": self.batches_size[i],
                 "vertices": vertices,
                 "colors": colors,
+                "confidence": conf,
                 "extrinsics": extrinsics,
                 "intrinsics": intrinsics,
             }
@@ -139,13 +153,28 @@ class BatchedVGGT:
 
     def SE3transform_pcl(self, H, points):
         """
-        Apply SE(3) matrix to batch of (n, 3) points
+        Apply SE(3) matrix to batch of (n, h, w, 3) points
         """
-        n = points.shape[0]
-        points_h = np.hstack((points, np.ones((n, 1))))
+        orig_shape = points.shape
+        n_points = np.prod(orig_shape[:-1])
+        points_flat = points.reshape(-1, 3)
+
+        points_h = np.hstack((points_flat, np.ones((n_points, 1))))
         # ((4,4) @ (n,4).T).T = (n,4)
         points_trans_h = (H @ points_h.T).T 
-        return points_trans_h[:,:3]
+        points_trans = points_trans_h[:, :3].reshape(orig_shape)
+        return points_trans
+    
+    def Rtransform_pcl(self, H, points):
+        """
+        Apply Rotation matrix to batch of (n, h, w, 3) points
+        """
+        orig_shape = points.shape
+        points_flat = points.reshape(-1, 3)
+
+        R = H[:3, :3]
+        points_rotated = (R @ points_flat.T).T
+        return points_rotated.reshape(orig_shape)
 
     def transform_pcls(self):
         """
@@ -156,7 +185,7 @@ class BatchedVGGT:
             self.transformation_chain_to_world.append(cumulative_transform)
         
         for i, pred in enumerate(self.batched_pred):
-            pcl = pred["vertices"]
+            pcl = pred["vertices_raw"]
             if i == 0:
                 self.pcl_transformed.append(pcl)
             else:
@@ -165,13 +194,16 @@ class BatchedVGGT:
                 if self.verbose:
                     self.transformation_chain_to_world.append(cumulative_transform)
 
-                pcl_trans = self.SE3transform_pcl(cumulative_transform, pcl)
+                if self.trf_mode == 'rotation':
+                    pcl_trans = self.Rtransform_pcl(cumulative_transform, pcl)
+                else:
+                    pcl_trans = self.SE3transform_pcl(cumulative_transform, pcl)
                 self.pcl_transformed.append(pcl_trans)
 
     def _cache_data(self):
         try:
             with open(self.cache_path, 'wb') as f:
-                pickle.dump((self.batched_pred, self.pcl_transformed), f)
+                pickle.dump((self.batched_pred, self.pcl_transformed, self.transformation_chain), f)
         except Exception as e:
             if self.verbose:
                 print(f"Failed to save pcl cache: {e}")
@@ -184,7 +216,7 @@ class BatchedVGGT:
 
         try:
             with open(self.cache_path, 'rb') as f:
-                self.batched_pred, self.pcl_transformed = pickle.load(f)
+                self.batched_pred, self.pcl_transformed, self.transformation_chain = pickle.load(f)
             
             return True
 
@@ -194,9 +226,9 @@ class BatchedVGGT:
             return False
 
     def apply_scaling(self):
-        scaling = self.scaling.run()
+        # scaling = self.scaling.run()
 
-        self.pcl_transformed = self.pcl_transformed * scaling
+        self.pcl_trf_align_scaled = self.pcl_trf_align
 
     def merge(self):
-        return self.merging.run(self.pcl_transformed, self.batched_pred)
+        return self.merging.run(self.pcl_trf_align_scaled, self.batched_pred)
