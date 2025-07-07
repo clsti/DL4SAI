@@ -51,6 +51,9 @@ class BatchedVGGT:
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
         self.glob_align = Sim3ICP(self.pcls_path, verbose=verbose, correct_rotation=correct_rotation)
 
+        # Scaling
+        self.scaling = Scaling(self.batches)
+
         # Get batches
         self.batches = self.batching.get_batches()
         self.batches_size = self.batching.get_batches_size()
@@ -58,15 +61,12 @@ class BatchedVGGT:
         self.batched_pred = []
 
         self.transformation_chain = []
-        self.pcl_transformed = []  # shape: (n, h, w, 3)
-        self.pcl_trf_align = []  # shape: (n, h, w, 3)
-        self.pcl_trf_align_scaled = []  # shape: (n, h, w, 3)
+        self.pcl_transformed = []  # shape: list of (n, h, w, 3)
+        self.pcl_trf_align = []  # shape: list of (n, h, w, 3)
+        self.pcl_trf_align_scaled = []  # shape: list of (n, h, w, 3)
         self.transformation_chain_to_world = []
 
         self.weight_flag = 2.0 # weight or None for no weight
-
-        # Scaling
-        self.scaling = Scaling(self.batches)
 
     def run(self):
         """
@@ -231,9 +231,9 @@ class BatchedVGGT:
             return False
 
     def apply_scaling(self):
-        # scaling = self.scaling.run()
+        scaling = self.scaling.run(self.pcl_trf_align)
 
-        self.pcl_trf_align_scaled = self.pcl_trf_align
+        self.pcl_trf_align_scaled = self.pcl_trf_align * scaling
 
     def merge(self):
         return self.merging.run(self.pcl_trf_align_scaled, self.batched_pred)
