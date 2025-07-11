@@ -3,20 +3,24 @@ import numpy as np
 import open3d as o3d
 
 class Sim3ICP:
-    def __init__(self, pcls_path, verbose=False, correct_rotation=True):
+    def __init__(self, pcls_path, verbose=False, mode='umeyama_weighted'):
         """
         
         """
 
         self.pcls_path = pcls_path
         self.verbose = verbose
-        self.correct_rotation = correct_rotation
         self.transformation_chain_to_world = []
 
         if self.verbose:
             os.makedirs(os.path.join(self.pcls_path, "initial"), exist_ok=True)
             os.makedirs(os.path.join(self.pcls_path, "trsf"), exist_ok=True)
 
+        if mode not in ['umeyama_weighted', 'umeyama', 'scale_translation']:
+            print(f"[Warning] Unsupported mode '{mode}'. Expected 'umeyama_weighted', 'umeyama', or 'scale_translation'. Using 'umeyama_weighted' as default.")
+            self.mode = 'umeyama_weighted'
+        else:
+            self.mode = mode
 
     def run(self, pcl_transformed, batched_pred):
         pairwise_transforms = self.compute_pairwise_transforms(pcl_transformed, batched_pred)
@@ -35,11 +39,15 @@ class Sim3ICP:
             j = i + 1
             tgt_raw = pcl_transformed[i]
             tgt_vid_sizes = batched_pred[i]["vid_img_sizes"]
+            tgt_confidence_raw = batched_pred[i]["confidence"]
             src_raw = pcl_transformed[j]
             src_vid_sizes = batched_pred[j]["vid_img_sizes"]
+            src_confidence_raw = batched_pred[j]["confidence"]
 
             tgt = tgt_raw[tgt_vid_sizes[1]:].reshape(-1, 3)
-            src= src_raw[:src_vid_sizes[0]].reshape(-1, 3)
+            tgt_confidence = tgt_confidence_raw[tgt_vid_sizes[1]:].reshape(-1)
+            src = src_raw[:src_vid_sizes[0]].reshape(-1, 3)
+            src_confidence = src_confidence_raw[:src_vid_sizes[0]].reshape(-1)
 
             if self.verbose:
                 tgt_color = batched_pred[i]["colors"]
@@ -51,10 +59,15 @@ class Sim3ICP:
                 self.to_pcd_file(tgt_raw.reshape(-1, 3), tgt_color, tgt_name)
                 self.to_pcd_file(src_raw.reshape(-1, 3), src_color, src_name)
 
-            if self.correct_rotation:
+            if self.mode == 'umeyama_weighted':
+                s, R, t = self.umeyama(src, tgt, src_confidence, tgt_confidence, with_scale=True)
+            elif self.mode == 'umeyama':
                 s, R, t = self.umeyama(src, tgt)
-            else:
+            elif self.mode == 'scale_translation':
                 s, R, t = self.align_point_clouds_scale_translation(src, tgt)
+            else:
+                print(f"Unknown mode: {self.mode}. Using 'umeyama_weighted' as default.")
+                s, R, t = self.umeyama(src, tgt, src_confidence, tgt_confidence, with_scale=True)
 
             pairwise_transforms[(i, j)] = (s, R, t)
 
@@ -76,7 +89,7 @@ class Sim3ICP:
         # 1. Compute centroids
         src_mean = src.mean(axis=0)
         tgt_mean = tgt.mean(axis=0)
-        
+
         # 2. Center point clouds
         src_centered = src - src_mean
         tgt_centered = tgt - tgt_mean
@@ -91,13 +104,15 @@ class Sim3ICP:
 
         return s, np.eye(3), t
 
-    def umeyama(self, src, tgt, with_scale=True):
+    def umeyama(self, src, tgt, src_weights=None, tgt_weights=None, with_scale=True):
         """
-        Umeyama algorithm for similarity (rigid + scale) transformation.
+        (Weighted) Umeyama algorithm.
 
         Args:
             src: (N, d) numpy array of source points
             tgt: (N, d) numpy array of target points
+            src_weights: (N,) array of source weights
+            tgt_weights: (N,) array of target weights
             with_scale: bool, if True estimate scale, else assume scale=1
 
         Returns:
@@ -108,16 +123,33 @@ class Sim3ICP:
         assert src.shape == tgt.shape, "Input point sets must have the same shape."
         n, d = src.shape
 
+        weights = None
+        if src_weights is not None and tgt_weights is not None:
+            assert src.shape[0] == src_weights.shape[0]
+            assert tgt.shape[0] == tgt_weights.shape[0]
+
+            weights = np.sqrt(src_weights * tgt_weights)
+
         # 1. Compute centroids
-        src_mean = src.mean(axis=0)
-        tgt_mean = tgt.mean(axis=0)
+        if weights is not None:
+            src_mean = np.average(src, axis=0, weights=weights)
+            tgt_mean = np.average(tgt, axis=0, weights=weights)
+        else:
+            # Unweighted mean
+            src_mean = src.mean(axis=0)
+            tgt_mean = tgt.mean(axis=0)
 
         # 2. Center point clouds
         src_centered = src - src_mean
         tgt_centered = tgt - tgt_mean
 
         # 3. Compute covariance matrix
-        Sigma = (tgt_centered.T @ src_centered) / n
+        if weights is not None:
+            W = np.sum(weights)
+            Sigma = (tgt_centered.T * weights) @ src_centered / W
+        else:
+            # unweighted covariance
+            Sigma = (tgt_centered.T @ src_centered) / n
 
         # 4. SVD
         U, D, Vt = np.linalg.svd(Sigma)
@@ -132,8 +164,13 @@ class Sim3ICP:
 
         # 7. Scale
         if with_scale:
-            var_P = np.sum(src_centered ** 2) / n
-            s = np.sum(D * np.diag(S)) / var_P
+            if weights is not None:
+                squared_norms = np.sum(src_centered**2, axis=1)
+                var_src = np.sum(weights * squared_norms) / W
+            else:
+                var_src = np.sum(src_centered ** 2) / n
+
+            s = np.sum(D * np.diag(S)) / var_src
         else:
             s = 1.0
 

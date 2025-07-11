@@ -25,8 +25,7 @@ class BatchedVGGT:
                  color=True,
                  mode='concatenate',
                  trf_mode='SE3',
-                 image_path=None,
-                 correct_rotation=True):
+                 image_path=None):
         """
         
         """
@@ -49,7 +48,7 @@ class BatchedVGGT:
         self.batching = Batching(data_path, self.image_path, verbose=verbose, use_cached=use_cached_batches, max_image_size=max_image_size)
         self.vggt_proc = VGGTproc(verbose=verbose, conf_thres=conf_thres)
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
-        self.glob_align = Sim3ICP(self.pcls_path, verbose=verbose, correct_rotation=correct_rotation)
+        self.glob_align = Sim3ICP(self.pcls_path, verbose=verbose, mode='umeyama_weighted')
 
         # Scaling
         self.scaling = Scaling(self.batches)
