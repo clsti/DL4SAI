@@ -22,9 +22,9 @@ class Sim3ICP:
         else:
             self.mode = mode
 
-    def run(self, pcl_transformed, batched_pred):
+    def run(self, pcl_transformed, pcl_transformed_filtered, batched_pred):
         pairwise_transforms = self.compute_pairwise_transforms(pcl_transformed, batched_pred)
-        pcl = self.transform_pcls(pcl_transformed, pairwise_transforms, batched_pred)
+        pcl = self.transform_pcls(pcl_transformed_filtered, pairwise_transforms, batched_pred)
 
         return pcl
     

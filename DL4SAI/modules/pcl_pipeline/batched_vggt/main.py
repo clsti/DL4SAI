@@ -61,6 +61,7 @@ class BatchedVGGT:
 
         self.transformation_chain = []
         self.pcl_transformed = []  # shape: list of (n, h, w, 3)
+        self.pcl_transformed_filtered = []  # shape: list of (n, h, w, 3)
         self.pcl_trf_align = []  # shape: list of (n, h, w, 3)
         self.pcl_trf_align_scaled = []  # shape: list of (n, h, w, 3)
         self.transformation_chain_to_world = []
@@ -75,7 +76,7 @@ class BatchedVGGT:
             self.batched_predictions()
             self.create_trans_chain()
             self.transform_pcls()
-            self.pcl_trf_align = self.glob_align.run(self.pcl_transformed, self.batched_pred)
+            self.pcl_trf_align = self.glob_align.run(self.pcl_transformed, self.pcl_transformed_filtered, self.batched_pred)
             self._cache_data()
         else:
             self._load_cache()
@@ -190,8 +191,10 @@ class BatchedVGGT:
         
         for i, pred in enumerate(self.batched_pred):
             pcl = pred["vertices_raw"]
+            pcl_filtered = pred["vertices"]
             if i == 0:
                 self.pcl_transformed.append(pcl)
+                self.pcl_transformed_filtered.append(pcl_filtered)
             else:
                 # Update cumulative transformation
                 cumulative_transform = cumulative_transform @ self.transformation_chain[i]
@@ -200,9 +203,13 @@ class BatchedVGGT:
 
                 if self.trf_mode == 'rotation':
                     pcl_trans = self.Rtransform_pcl(cumulative_transform, pcl)
+                    pcl_trans_filtered = self.Rtransform_pcl(cumulative_transform, pcl_filtered)
                 else:
                     pcl_trans = self.SE3transform_pcl(cumulative_transform, pcl)
+                    pcl_trans_filtered = self.SE3transform_pcl(cumulative_transform, pcl_filtered)
+
                 self.pcl_transformed.append(pcl_trans)
+                self.pcl_transformed_filtered.append(pcl_trans_filtered)
 
     def _cache_data(self):
         try:

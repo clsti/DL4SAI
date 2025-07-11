@@ -115,7 +115,7 @@ class VGGTproc:
         if self.conf_thres == 0.0:
             conf_threshold = 0.0
         else:
-            conf_threshold = np.percentile(conf, self.conf_thres)
+            conf_threshold = np.percentile(conf, self.conf_thres * 100.0)
 
         conf_mask = (conf >= conf_threshold) & (conf > 1e-5)
 
