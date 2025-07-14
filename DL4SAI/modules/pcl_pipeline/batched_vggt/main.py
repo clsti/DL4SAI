@@ -1,6 +1,8 @@
 import os
 import pickle
 import numpy as np
+import torch
+import gc
 from pymlg import SE3
 
 from batching import Batching
@@ -78,6 +80,7 @@ class BatchedVGGT:
             self.transform_pcls()
             self.pcl_trf_align = self.glob_align.run(self.pcl_transformed, self.pcl_transformed_filtered, self.batched_pred)
             self._cache_data()
+            self.unload()
         else:
             self._load_cache()
             print("Loaded pcls from cache")
@@ -235,6 +238,15 @@ class BatchedVGGT:
             if self.verbose:
                 print(f"Failed to load pcl cache: {e}")
             return False
+        
+    def unload(self):
+        """Free VGGT from GPU memory."""
+        if self.vggt_proc.model is not None:
+            self.vggt_proc.model.to("cpu")
+            del self.vggt_proc.model
+            self.vggt_proc.model = None
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def apply_scaling(self):
         scaling = self.scaling.run(self.pcl_trf_align)
