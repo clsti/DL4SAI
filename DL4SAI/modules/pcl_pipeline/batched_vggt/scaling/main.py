@@ -16,10 +16,9 @@ class Scaling:
         """
         
         """
-        weights_path = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
+        self.weights_path = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 
-        self.model = AsymmetricMASt3R.from_pretrained(weights_path).to(device)
-        self.chkpt_tag = hash_md5(weights_path)
+        self.chkpt_tag = hash_md5(self.weights_path)
         self.device = device if device else torch.device("cpu")
         self.batched_images = batched_images
 
@@ -110,6 +109,7 @@ class Scaling:
 
         returns: final_scale
         """
+        self.model = AsymmetricMASt3R.from_pretrained(self.weights_path).to(self.device)
         results = []
         for i in range(len(self.batched_images)):
             images = self.batched_images[i]
