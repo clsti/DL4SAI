@@ -1,4 +1,4 @@
-import mast3r_wrapper as m3
+from . import mast3r_wrapper as m3
 from mast3r.model import AsymmetricMASt3R
 from mast3r.utils.misc import hash_md5
 from contextlib import nullcontext
@@ -7,6 +7,8 @@ import numpy as np
 import open3d as o3d
 import os
 import copy
+import torch
+from scipy.spatial import cKDTree
 
 class Scaling:
 
@@ -16,7 +18,7 @@ class Scaling:
         """
         weights_path = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 
-        self.model = AsymmetricMASt3R.from_pretrained(weights_path).to(args.device)
+        self.model = AsymmetricMASt3R.from_pretrained(weights_path).to(device)
         self.chkpt_tag = hash_md5(weights_path)
         self.device = device if device else torch.device("cpu")
         self.batched_images = batched_images
@@ -54,43 +56,52 @@ class Scaling:
                                        shared_intrinsics=True)
             
     def get_scale(source, target):
-        source_pts = np.asarray(source.points)
-        target_pts = np.asarray(target.points)
-        scale_source = np.mean(np.linalg.norm(source_pts - np.mean(source_pts, axis=0), axis=1))
-        scale_target = np.mean(np.linalg.norm(target_pts - np.mean(target_pts, axis=0), axis=1))
+        mean_source = np.mean(source, axis=0, keepdims=True)
+        mean_target = np.mean(target, axis=0, keepdims=True)
+        s1 = np.median(np.abs(source - mean_source))
+        s2 = np.median(np.abs(target - mean_target))
+
+        source = (source - mean_source) * (s2/s1) + mean_source
+
+        s_final = 1
+        t_final = 0
         
-        scale = scale_target / scale_source
-        print("scale:", scale)
+        target_kdtree = cKDTree(target)
 
-        target_pcd = copy.deepcopy(target)
-        target_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-        source_scaled = copy.deepcopy(source)
-        source_scaled.scale(scale, center=source_scaled.get_center())
+        for _ in range(5):
+            # Find closest points in target for each source point
+            _, indices = target_kdtree.query(source, k=1)
+            target_matched = target[indices]   # shape: (N_src, 3)
 
-        # Step 2: Apply ICP for fine alignment
-        threshold = 0.02  # Distance threshold for ICP
-        trans_init = np.eye(4)
+            source = source.T  # (3, N)
+            target_matched = target_matched.T  # (3, N)
+            N = source.shape[1]
+        
+            # Compute means
+            mean_source = np.mean(source, axis=1, keepdims=True)
+            mean_target = np.mean(target_matched, axis=1, keepdims=True)
 
-        # Align centroids
-        source_center = source_scaled.get_center()
-        target_center = target_pcd.get_center()
-        translation = target_center - source_center
+            # Center the point sets
+            source_centered = source - mean_source
+            target_centered = target_matched - mean_target
+            
+            # Compute variance and covariance
+            var = np.sum(source_centered ** 2) / N
+            covariance = np.sum(target_centered * source_centered) / N
+            
+            # Compute scale
+            s = covariance / var
+            
+            # Compute translation
+            t = mean_target - s * mean_source
 
-        # Apply translation to source
-        source_scaled.translate(translation)
+            source = source.T * s + t.T
 
-        reg_p2p = o3d.pipelines.registration.registration_icp(
-            source_scaled, target_pcd, threshold, trans_init,
-            o3d.pipelines.registration.TransformationEstimationPointToPlane()
-        )
+            s_final *= s
+            t_final += t # can be ignored
 
-        print("ICP fitness:", reg_p2p.fitness)
-        print("ICP transformation:\n", reg_p2p.transformation)
+        return s_final*(s2/s1)
 
-        #aligned = source_scaled.transform(reg_p2p.transformation)
-        #o3d.io.write_point_cloud(target_dir + "/aligned.ply", aligned)
-
-        return scale
          
     def run(self, pcl) -> float:
         """
@@ -103,7 +114,7 @@ class Scaling:
         for i in range(len(self.batched_images)):
             images = self.batched_images[i]
             batches = [images[:len(images)//3], images[len(images)//3:2*len(images)//3], images[2*len(images)//3:]]
-            batches = [batch[np.arange(0, len(batch), len(batch)//6)] for batch in batches]
+            batches = [batch[np.arange(0, len(batch), len(batch)//2)] for batch in batches]
             scales = []
             for batch in batches:
                 target = self.run_master(batch)
