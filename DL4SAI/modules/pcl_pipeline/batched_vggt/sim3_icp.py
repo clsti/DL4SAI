@@ -50,14 +50,16 @@ class Sim3ICP:
             src_confidence = src_confidence_raw[:src_vid_sizes[0]].reshape(-1)
 
             if self.verbose:
+                tgt_ply = batched_pred[i]["vertices"]
+                src_ply = batched_pred[j]["vertices"]
                 tgt_color = batched_pred[i]["colors"]
                 src_color = batched_pred[j]["colors"]
 
                 tgt_name = os.path.join(self.pcls_path, "initial", f"pcd_{j}.ply")
                 src_name = os.path.join(self.pcls_path, "initial", f"pcd_{i}.ply")
 
-                self.to_pcd_file(tgt_raw.reshape(-1, 3), tgt_color, tgt_name)
-                self.to_pcd_file(src_raw.reshape(-1, 3), src_color, src_name)
+                self.to_pcd_file(tgt_ply.reshape(-1, 3), tgt_color, tgt_name)
+                self.to_pcd_file(src_ply.reshape(-1, 3), src_color, src_name)
 
             if self.mode == 'umeyama_weighted':
                 s, R, t = self.umeyama(src, tgt, src_confidence, tgt_confidence, with_scale=True)
