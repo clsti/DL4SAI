@@ -21,7 +21,7 @@ class VGGTproc:
     VGGT image processing
     """
 
-    def __init__(self, verbose=False, pcl_pred="from_depth", conf_thres=0.5):
+    def __init__(self, verbose=False, pcl_pred="from_depth", conf_thres_visu=0.5, conf_thres_align=0.7):
         """
         load model
         """
@@ -30,7 +30,8 @@ class VGGTproc:
         
         self.verbose = verbose
         self.pcl_pred = pcl_pred
-        self.conf_thres = conf_thres
+        self.conf_thres_visu = conf_thres_visu
+        self.conf_thres_align = conf_thres_align
         self.show_cam = True
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -42,14 +43,16 @@ class VGGTproc:
         self.vertices_raw = None
         self.vertices_3d = None
         self.camera_extrinsics = None
+        self.camera_positions_pointwise = None
         self.intrinsics = None
         self.colors_rgb = None
+        self.conf_mask_align = None
 
     def run(self, image_paths, target_file=None):
         self._proc(image_paths)
         self._post_proc(target_file)
 
-        return self.vertices_raw, self.vertices_3d, self.colors_rgb, self.conf, self.camera_extrinsics, self.intrinsics
+        return self.vertices_raw, self.vertices_3d, self.colors_rgb, self.conf, self.camera_extrinsics, self.intrinsics, self.conf_mask_align, self.camera_positions_pointwise
 
     def _proc(self, image_paths):
         # preprocess images
@@ -96,11 +99,16 @@ class VGGTproc:
         # store extrinsics & intrinsics
         self.camera_extrinsics = camera_matrices
         self.intrinsics = self.predictions["intrinsic"]
+        
+        pred_world_points_shape = pred_world_points.shape
+        self.camera_positions_pointwise = np.expand_dims(np.expand_dims(camera_matrices[:,:,3], axis=1), axis=2)
+        self.camera_positions_pointwise = np.tile(self.camera_positions_pointwise, (1, pred_world_points_shape[1], pred_world_points_shape[2], 1))
 
         # TODO: add mask_sky (maybe also mask_black & mask_white)
 
         self.vertices_raw = pred_world_points
         self.vertices_3d = pred_world_points.reshape(-1, 3)
+        self.camera_positions_pointwise = self.camera_positions_pointwise.reshape(-1, 3)
         self.conf = pred_world_points_conf
 
         # Handle different image formats - check if images need transposing
@@ -111,15 +119,23 @@ class VGGTproc:
         self.colors_rgb = (self.colors_rgb.reshape(-1, 3) * 255).astype(np.uint8)
 
         conf = pred_world_points_conf.reshape(-1)
-        # Convert percentage threshold to actual confidence value
-        if self.conf_thres == 0.0:
+        # Convert percentage threshold to actual confidence value for visualization
+        if self.conf_thres_visu == 0.0:
             conf_threshold = 0.0
         else:
-            conf_threshold = np.percentile(conf, self.conf_thres * 100.0)
+            conf_threshold = np.percentile(conf, self.conf_thres_visu * 100.0)
+
+        # Convert percentage threshold to actual confidence value for alignment
+        if self.conf_thres_align == 0.0:
+            conf_threshold_align = 0.0
+        else:
+            conf_threshold_align = np.percentile(conf, self.conf_thres_align * 100.0)
 
         conf_mask = (conf >= conf_threshold) & (conf > 1e-5)
+        self.conf_mask_align = (self.conf >= conf_threshold_align) & (self.conf > 1e-5)
 
         self.vertices_3d = self.vertices_3d[conf_mask]
+        self.camera_positions_pointwise = self.camera_positions_pointwise[conf_mask]
         self.colors_rgb = self.colors_rgb[conf_mask]
 
         # TODO: where to store glb file? if verbose
