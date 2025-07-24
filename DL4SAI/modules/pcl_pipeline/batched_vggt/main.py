@@ -28,7 +28,8 @@ class BatchedVGGT:
                  color=True,
                  mode='concatenate',
                  trf_mode='SE3',
-                 image_path=None):
+                 image_path=None,
+                 transition_filter={}):
         """
         
         """
@@ -36,6 +37,8 @@ class BatchedVGGT:
         self.verbose = verbose
         self.use_cached_pcls = use_cached_pcls
         self.trf_mode = trf_mode
+        self.transition_filter = transition_filter
+        self.conf_thres_visu = conf_thres_visu
 
         if trf_mode not in ['SE3', 'rotation']:
             print(f"[Warning] Unsupported trf_mode '{trf_mode}'. Expected 'SE3' or 'rotation' (default: SE3).")
@@ -100,6 +103,12 @@ class BatchedVGGT:
         """
         # process batches
         for i, images in enumerate(self.batches):
+            # filter for transitions
+            if i in self.transition_filter:
+                self.vggt_proc.set_conf_thres_visu(self.transition_filter[i])
+            else:
+                self.vggt_proc.set_conf_thres_visu(self.conf_thres_visu)
+
             # run vggt
             vertices_raw, vertices, colors, conf, extrinsics, intrinsics, conf_mask_align, cam_pos_pointwise = self.vggt_proc.run(images)
             predictions = {

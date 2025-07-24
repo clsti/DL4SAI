@@ -210,7 +210,7 @@ class Sim3ICP:
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pcl)
         pcd.colors = o3d.utility.Vector3dVector(color/255.0)
-        o3d.io.write_point_cloud(path, pcd)
+        o3d.io.write_point_cloud(path, pcd, write_ascii=False)
 
     def to_transformation_matrix(self, s, R, t):
         """

@@ -53,6 +53,9 @@ class VGGTproc:
         self._post_proc(target_file)
 
         return self.vertices_raw, self.vertices_3d, self.colors_rgb, self.conf, self.camera_extrinsics, self.intrinsics, self.conf_mask_align, self.camera_positions_pointwise
+    
+    def set_conf_thres_visu(self, conf):
+        self.conf_thres_visu = conf
 
     def _proc(self, image_paths):
         # preprocess images
