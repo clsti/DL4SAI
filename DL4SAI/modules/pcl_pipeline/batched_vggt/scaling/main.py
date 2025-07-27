@@ -9,6 +9,7 @@ import os
 import copy
 import torch
 from scipy.spatial import cKDTree
+import cv2
 
 class Scaling:
 
@@ -19,7 +20,7 @@ class Scaling:
         self.weights_path = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 
         self.chkpt_tag = hash_md5(self.weights_path)
-        self.device = device if device else torch.device("cpu")
+        self.device = device if device else torch.device("cuda")
         self.batched_images = batched_images
 
     def run_master(self, imgs):
@@ -40,8 +41,8 @@ class Scaling:
                                        niter1=300,
                                        lr2=0.01,
                                        niter2=300,
-                                       min_conf_thr=0,
-                                       matching_conf_thr=0,
+                                       min_conf_thr=0.3,
+                                       matching_conf_thr=0.3,
                                        as_pointcloud=True,
                                        mask_sky=False,
                                        clean_depth=True,
@@ -54,7 +55,9 @@ class Scaling:
                                        TSDF_thresh=0,
                                        shared_intrinsics=True)
             
-    def get_scale(source, target):
+    def get_scale(self, source, target):
+        source = source[np.random.permutation(np.arange(len(source)))[:10000]]
+        target = target[np.random.permutation(np.arange(len(target)))[:10000]]
         mean_source = np.mean(source, axis=0, keepdims=True)
         mean_target = np.mean(target, axis=0, keepdims=True)
         s1 = np.median(np.abs(source - mean_source))
@@ -67,7 +70,7 @@ class Scaling:
         
         target_kdtree = cKDTree(target)
 
-        for _ in range(5):
+        for _ in range(1):
             # Find closest points in target for each source point
             _, indices = target_kdtree.query(source, k=1)
             target_matched = target[indices]   # shape: (N_src, 3)
@@ -99,30 +102,43 @@ class Scaling:
             s_final *= s
             t_final += t # can be ignored
 
-        return s_final*(s2/s1)
+        return s_final*(s2/s1), np.mean(np.linalg.norm(source - target_matched.T, axis=1))
 
          
-    def run(self, pcl) -> float:
+    def run(self, pcl, verbose=False) -> float:
         """
         Subdivides each batch into 3 sub-batches and calculates the variance in scale estimation for these sub-batches.
         Final scale is the mean scale for the batch with the smallest variance.
 
         returns: final_scale
         """
+        def laplacian_variance(path):
+            img = cv2.imread(path)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            return cv2.Laplacian(gray, cv2.CV_64F).var()
+        
         self.model = AsymmetricMASt3R.from_pretrained(self.weights_path).to(self.device)
         results = []
         for i in range(len(self.batched_images)):
             images = self.batched_images[i]
-            batches = [images[:len(images)//3], images[len(images)//3:2*len(images)//3], images[2*len(images)//3:]]
-            batches = [batch[np.arange(0, len(batch), len(batch)//2)] for batch in batches]
+            batches = [images[:len(images):3], images[1:len(images):3], images[2:len(images):3]]
+            batches = [[batch[j] for j in np.arange(0, len(batch), len(batch)//4)] for batch in batches]
             scales = []
+            errors = []
             for batch in batches:
                 target = self.run_master(batch)
-                scales.append(self.get_scale(pcl[i], target)) #TODO: what is the format of pcl
+                target = np.asarray(target.points)
+                s, e = self.get_scale(pcl[i], target)
+                scales.append(s) #TODO: what is the format of pcl
+                errors.append(e)
             scales = np.array(scales)
-            results.append([scales.mean(), scales.var()])
+            errors = np.array(errors)
+            results.append([scales.mean(), scales.var(), errors.mean(), np.mean([laplacian_variance(img) for img in batch])])
+            print(results[-1][-1])
         
         results = np.array(results)
+        if True or verbose:
+            print(results)
 
         return results[np.argmin(results[:, 1])][0]
             

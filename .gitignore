@@ -4,3 +4,12 @@
 /local_ws/vggt/input*
 /local_ws/pipelines/generated_data/
 *.pyc
+output_NKSR.ply
+pcl_data.npz
+my_lines.ply
+my_pointcloud.ply
+mast3r_out.glb
+normals.pt
+.vscode/launch.json
+DL4SAI/modules/pcl_pipeline/batched_vggt/main_test.py
+/local_ws/

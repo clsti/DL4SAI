@@ -106,7 +106,7 @@ def _convert_scene_output_to_glb(outfile, imgs, pts3d, mask, focals, cams2world,
 
     rot = np.eye(4)
     rot[:3, :3] = Rotation.from_euler('y', np.deg2rad(180)).as_matrix()
-    scene.apply_transform(np.linalg.inv(cams2world[0] @ OPENGL @ rot))
+    scene.apply_transform(np.linalg.inv(cams2world[0]))
     if not silent:
         print('(exporting 3D scene to', outfile, ')')
     scene.export(file_obj=outfile)
@@ -114,7 +114,7 @@ def _convert_scene_output_to_glb(outfile, imgs, pts3d, mask, focals, cams2world,
     #output_path_ply = os.path.join(outfile[:-3] + "ply")
     #print("focal:", focals[0])
     #print("transform:", np.linalg.inv(cams2world[0] @ OPENGL @ rot))
-    pcd.points =  o3d.utility.Vector3dVector((np.hstack([pts, np.ones((pts.shape[0], 1))]) @ np.linalg.inv(cams2world[0] @ OPENGL @ rot).T)[:,:3]/focals[0]*600) #TODO: replce 600 with the right value
+    pcd.points =  o3d.utility.Vector3dVector((np.hstack([pts, np.ones((pts.shape[0], 1))]) @ np.linalg.inv(cams2world[0]).T)[:,:3]*np.array([1,1,focals[0]/600])) #TODO: replace 600 with the right value
     #o3d.io.write_point_cloud(output_path_ply, pcd)
     
     return outfile, pcd
@@ -208,7 +208,8 @@ def get_reconstructed_scene(outdir, gradio_delete_cache, model, retrieval_model,
             current_scene_state.outfile_name is not None:
         outfile_name = current_scene_state.outfile_name
     else:
-        outfile_name = tempfile.mktemp(suffix='_scene.glb', dir=outdir)
+        outfile_name = "./mast3r_out.glb"
+        #outfile_name = tempfile.mktemp(suffix='_scene.glb', dir=outdir)
 
     scene_state = SparseGAState(scene, gradio_delete_cache, cache_dir, outfile_name)
     outfile, pcd = get_3D_model_from_scene(silent, scene_state, min_conf_thr, as_pointcloud, mask_sky,
