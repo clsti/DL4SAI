@@ -37,27 +37,51 @@ class Sim3ICP:
         
         for i in range(n):
             j = i + 1
+            if self.verbose:
+                print(f"Aligning point cloud {j} with point cloud {i}...")
+
+            # Extract point clouds, confidence values and masks
             tgt_raw = pcl_transformed[i]
             tgt_vid_sizes = batched_pred[i]["vid_img_sizes"]
             tgt_confidence_raw = batched_pred[i]["confidence"]
+            tgt_conf_mask_align_raw = batched_pred[i]["conf_mask_align"]
             src_raw = pcl_transformed[j]
             src_vid_sizes = batched_pred[j]["vid_img_sizes"]
             src_confidence_raw = batched_pred[j]["confidence"]
+            src_conf_mask_align_raw = batched_pred[j]["conf_mask_align"]
 
-            tgt = tgt_raw[tgt_vid_sizes[1]:].reshape(-1, 3)
-            tgt_confidence = tgt_confidence_raw[tgt_vid_sizes[1]:].reshape(-1)
+            # Extract overlapping point clouds and confidence values
+            tgt = tgt_raw[tgt_vid_sizes[0]:].reshape(-1, 3)
+            tgt_confidence = tgt_confidence_raw[tgt_vid_sizes[0]:].reshape(-1)
+            tgt_conf_mask_align = tgt_conf_mask_align_raw[tgt_vid_sizes[0]:].reshape(-1)
             src = src_raw[:src_vid_sizes[0]].reshape(-1, 3)
             src_confidence = src_confidence_raw[:src_vid_sizes[0]].reshape(-1)
+            src_conf_mask_align = src_conf_mask_align_raw[:src_vid_sizes[0]].reshape(-1)
 
             if self.verbose:
+                print(f"tgt shape original: {tgt.shape}, src shape original: {src.shape}")
+
+            # Filter point clouds based and confidences based on masks
+            mask_align_combinded = tgt_conf_mask_align & src_conf_mask_align
+            tgt = tgt[mask_align_combinded]
+            tgt_confidence = tgt_confidence[mask_align_combinded]
+            src = src[mask_align_combinded]
+            src_confidence = src_confidence[mask_align_combinded]
+
+            if self.verbose:
+                print(f"tgt shape filtered: {tgt.shape}, src shape filtered: {src.shape}")
+
+            if self.verbose:
+                tgt_ply = batched_pred[i]["vertices"]
+                src_ply = batched_pred[j]["vertices"]
                 tgt_color = batched_pred[i]["colors"]
                 src_color = batched_pred[j]["colors"]
 
                 tgt_name = os.path.join(self.pcls_path, "initial", f"pcd_{j}.ply")
                 src_name = os.path.join(self.pcls_path, "initial", f"pcd_{i}.ply")
 
-                self.to_pcd_file(tgt_raw.reshape(-1, 3), tgt_color, tgt_name)
-                self.to_pcd_file(src_raw.reshape(-1, 3), src_color, src_name)
+                self.to_pcd_file(tgt_ply.reshape(-1, 3), tgt_color, tgt_name)
+                self.to_pcd_file(src_ply.reshape(-1, 3), src_color, src_name)
 
             if self.mode == 'umeyama_weighted':
                 s, R, t = self.umeyama(src, tgt, src_confidence, tgt_confidence, with_scale=True)
@@ -186,7 +210,7 @@ class Sim3ICP:
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pcl)
         pcd.colors = o3d.utility.Vector3dVector(color/255.0)
-        o3d.io.write_point_cloud(path, pcd)
+        o3d.io.write_point_cloud(path, pcd, write_ascii=False)
 
     def to_transformation_matrix(self, s, R, t):
         """
@@ -210,6 +234,22 @@ class Sim3ICP:
         points_trans_h = (H_sim3 @ points_h.T).T 
         points_trans = points_trans_h[:, :3].reshape(orig_shape)
         return points_trans
+    
+    def sim3_transformation_extrinsics(self, extrinsics, H_sim3):
+        """
+        Apply a Sim(3) transformation to a batch of extrinsics matrices (n, 3,4).
+        """
+        n_extrinsics = extrinsics.shape[0]
+
+        extrinsics_h = np.concatenate([
+            extrinsics,
+            np.tile(np.array([0, 0, 0, 1])[None, None, :], (n_extrinsics, 1, 1))  # (n, 1, 4)
+        ], axis=1)
+
+        extrinsics_trans = H_sim3 @ extrinsics_h
+        extrinsics = extrinsics_trans[:, :3, :]  # (n, 3, 4)
+
+        return extrinsics
     
     def transform_pcls(self, pcl_list, pairwise_transforms, batched_pred):
         """
@@ -240,7 +280,10 @@ class Sim3ICP:
 
             if self.verbose:
                 self.transformation_chain_to_world.append(cumulative_transform)
+
             pcl_trans = self.sim3_transformation(pcl_list[j], cumulative_transform)
+            batched_pred[j]["extrinsics"] = self.sim3_transformation_extrinsics(batched_pred[j]["extrinsics"], cumulative_transform)
+            batched_pred[j]["camera_positions_pointwise"] = self.sim3_transformation(batched_pred[j]["camera_positions_pointwise"], cumulative_transform)
 
             if self.verbose:
                 color = batched_pred[j]["colors"]

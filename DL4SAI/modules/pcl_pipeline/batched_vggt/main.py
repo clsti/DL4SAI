@@ -1,6 +1,8 @@
 import os
 import pickle
 import numpy as np
+import torch
+import gc
 from pymlg import SE3
 
 from batching import Batching
@@ -21,11 +23,13 @@ class BatchedVGGT:
                  use_cached_batches=False,
                  use_cached_pcls=False,
                  max_image_size=80,
-                 conf_thres=0.5,
+                 conf_thres_visu=0.5,
+                 conf_thres_align=0.7,
                  color=True,
                  mode='concatenate',
                  trf_mode='SE3',
-                 image_path=None):
+                 image_path=None,
+                 transition_filter={}):
         """
         
         """
@@ -33,20 +37,25 @@ class BatchedVGGT:
         self.verbose = verbose
         self.use_cached_pcls = use_cached_pcls
         self.trf_mode = trf_mode
+        self.transition_filter = transition_filter
+        self.conf_thres_visu = conf_thres_visu
 
         if trf_mode not in ['SE3', 'rotation']:
             print(f"[Warning] Unsupported trf_mode '{trf_mode}'. Expected 'SE3' or 'rotation' (default: SE3).")
 
         if image_path is None:
-            self.image_path = os.path.join(data_path,'generated_data/images')
-            self.pcls_path = os.path.join(data_path,'generated_data/pcls')
+            self.data_path = os.path.join(data_path,'generated_data')
         else:
-            self.image_path = os.path.join(image_path,'images')
-            self.pcls_path = os.path.join(image_path,'pcls')
+            self.data_path = image_path
+
+        self.image_path = os.path.join(self.data_path, 'images')
+        self.pcls_path = os.path.join(self.data_path, 'pcls')
         self.cache_path = os.path.join(self.image_path, 'pcl_cache.pkl')
+        self.target_file_path = os.path.join(self.data_path, 'glbs')
+        os.makedirs(self.target_file_path, exist_ok=True)
 
         self.batching = Batching(data_path, self.image_path, verbose=verbose, use_cached=use_cached_batches, max_image_size=max_image_size)
-        self.vggt_proc = VGGTproc(verbose=verbose, conf_thres=conf_thres)
+        self.vggt_proc = VGGTproc(verbose=verbose, conf_thres_visu=conf_thres_visu, conf_thres_align=conf_thres_align)
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
         self.glob_align = Sim3ICP(self.pcls_path, verbose=verbose, mode='umeyama_weighted')
 
@@ -78,6 +87,7 @@ class BatchedVGGT:
             self.transform_pcls()
             self.pcl_trf_align = self.glob_align.run(self.pcl_transformed, self.pcl_transformed_filtered, self.batched_pred)
             self._cache_data()
+            self.unload()
         else:
             self._load_cache()
             print("Loaded pcls from cache")
@@ -93,8 +103,14 @@ class BatchedVGGT:
         """
         # process batches
         for i, images in enumerate(self.batches):
+            # filter for transitions
+            if i in self.transition_filter:
+                self.vggt_proc.set_conf_thres_visu(self.transition_filter[i])
+            else:
+                self.vggt_proc.set_conf_thres_visu(self.conf_thres_visu)
+
             # run vggt
-            vertices_raw, vertices, colors, conf, extrinsics, intrinsics = self.vggt_proc.run(images)
+            vertices_raw, vertices, colors, conf, extrinsics, intrinsics, conf_mask_align, cam_pos_pointwise = self.vggt_proc.run(images)
             predictions = {
                 "vertices_raw": vertices_raw,
                 "vid_img_sizes": self.batches_size[i],
@@ -103,6 +119,8 @@ class BatchedVGGT:
                 "confidence": conf,
                 "extrinsics": extrinsics,
                 "intrinsics": intrinsics,
+                "conf_mask_align": conf_mask_align,
+                "camera_positions_pointwise": cam_pos_pointwise,
             }
             self.batched_pred.append(predictions)
 
@@ -151,7 +169,7 @@ class BatchedVGGT:
             size_next = self.batches_size[i+1]
 
             extr_curr_batch = extr_curr[size_curr[0]:]
-            extr_next_batch = extr_next[:size_next[1]]
+            extr_next_batch = extr_next[:size_next[0]]
 
             H = self.get_average(extr_curr_batch, extr_next_batch)
             self.transformation_chain.append(H)
@@ -235,6 +253,15 @@ class BatchedVGGT:
             if self.verbose:
                 print(f"Failed to load pcl cache: {e}")
             return False
+        
+    def unload(self):
+        """Free VGGT from GPU memory."""
+        if self.vggt_proc.model is not None:
+            self.vggt_proc.model.to("cpu")
+            del self.vggt_proc.model
+            self.vggt_proc.model = None
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def apply_scaling(self):
         scaling = self.scaling.run(self.pcl_trf_align)
