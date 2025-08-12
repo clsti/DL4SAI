@@ -10,7 +10,7 @@ class Batching:
     """
     Split data input into batches
     """
-    def __init__(self, data_path, image_path, verbose=False, use_cached=False, max_image_size=80, file_type=('.mp4')):
+    def __init__(self, data_path, image_path, verbose=False, use_cached=False, max_image_size=80, file_type=('.mp4', '.mov')):
         """
         
         """
@@ -53,14 +53,28 @@ class Batching:
 
         # Sort numerically based on time in filenames
         def extract_timestamp(filename):
-            # Example filename: PCL_20240608_153045123.mp4
-            try:
-                base = os.path.splitext(filename)[0]  # Remove extension
-                timestamp_str = base.split('_')[1] + base.split('_')[2]
-                return datetime.strptime(timestamp_str, "%Y%m%d%H%M%S%f")
-            except (IndexError, ValueError):
-                # In case the filename does not match expected pattern
-                return datetime.min
+            base = os.path.splitext(filename)[0]  # Remove extension
+
+            if len(base) >= 15:  # Case 1: Timestamp pattern like PXL_20240608_153045123.mp4
+                try:
+                    timestamp_str = base.split('_')[1] + base.split('_')[2]
+                    return datetime.strptime(timestamp_str, "%Y%m%d%H%M%S%f")
+                except (IndexError, ValueError):
+                    # In case the filename does not match expected pattern
+                    print(f"[WARNING] filename {filename} does not match expected pattern.")
+                    return datetime.min
+            
+            elif len(base) <= 10:  # Case 2: Iterator pattern like IMG_8149.MOV
+                if base.lower().startswith('img') and base[4:].isdigit():
+                    return int(base[4:])
+                else:
+                    print(f"[WARNING] filename {filename} does not match expected pattern.")
+                    return float('inf')
+            
+            else: 
+                print(f"[WARNING] filename {filename} does not match expected pattern.")
+                return float('inf')
+
 
         video_files.sort(key=extract_timestamp)
 
