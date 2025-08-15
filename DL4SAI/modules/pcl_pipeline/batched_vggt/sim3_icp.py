@@ -75,8 +75,8 @@ class Sim3ICP:
                 tgt_color = batched_pred[i]["colors"]
                 src_color = batched_pred[j]["colors"]
 
-                tgt_name = os.path.join(self.pcls_path, "initial", f"pcd_{j}.ply")
-                src_name = os.path.join(self.pcls_path, "initial", f"pcd_{i}.ply")
+                tgt_name = os.path.join(self.pcls_path, "initial", f"pcd_{i}.ply")
+                src_name = os.path.join(self.pcls_path, "initial", f"pcd_{j}.ply")
 
                 self.trf_initial.to_pcd_file(tgt_ply.reshape(-1, 3), tgt_color, tgt_name)
                 self.trf_initial.to_pcd_file(src_ply.reshape(-1, 3), src_color, src_name)
