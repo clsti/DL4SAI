@@ -13,7 +13,7 @@ from get_std import get_std
 
 nksr_path = "submodules/NKSR/examples"
 sys.path.insert(0, nksr_path)
-std = 0.025101243
+std = None #0.025101243
 alpha = 1
 
 print("start script")
@@ -24,8 +24,9 @@ if GPU:
 else:
     device = torch.device("cpu")
 
-data = np.load('./local_ws/MI_front_area/pcl_data.npz', allow_pickle=True)
+data = np.load('./pcl_data.npz', allow_pickle=True)
 pcl = data['array1'].reshape(-1, 3)
+print(pcl)
 inds = np.random.permutation(np.arange(pcl.shape[0]))[:pcl.shape[0]//12]
 print("Point cloud shape:", pcl.shape)
 #batched_pred = data['array3']
