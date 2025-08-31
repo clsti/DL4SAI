@@ -1,5 +1,7 @@
 import os
+import torch
 import numpy as np
+import pypose as pp
 import open3d as o3d
 
 class Trf:
@@ -62,10 +64,16 @@ class Trf:
             np.tile(np.array([0, 0, 0, 1])[None, None, :], (n_extrinsics, 1, 1))  # (n, 1, 4)
         ], axis=1)
 
-        extrinsics_trans = H_sim3 @ extrinsics_h
-        extrinsics = extrinsics_trans[:, :3, :]  # (n, 3, 4)
+        H_torch = torch.from_numpy(H_sim3).float().unsqueeze(0)
+        sim3 = pp.from_matrix(H_torch, ltype=pp.Sim3_type)
 
-        return extrinsics
+        sim3_inv = sim3.Inv()
+        H_inv = sim3_inv.matrix().squeeze(0).numpy()
+
+        extrinsics_trans = extrinsics_h @ H_inv
+        extrinsics_out = extrinsics_trans[:, :3, :]  # (n, 3, 4)
+
+        return extrinsics_out
     
     def transform_pcls(self, pcl_list, pairwise_transforms, batched_pred):
         """
