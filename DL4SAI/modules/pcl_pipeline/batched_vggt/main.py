@@ -59,13 +59,13 @@ class BatchedVGGT:
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
         self.glob_align = Sim3ICP(self.pcls_path, verbose=verbose, mode='umeyama_weighted')
 
-        # Scaling
-        self.scaling = Scaling(self.batches)
-
         # Get batches
         self.batches = self.batching.get_batches()
         self.batches_size = self.batching.get_batches_size()
-
+        
+        # Scaling
+        self.scaling = Scaling(self.batches)
+        
         self.batched_pred = []
 
         self.transformation_chain = []
@@ -266,7 +266,19 @@ class BatchedVGGT:
     def apply_scaling(self):
         scaling = self.scaling.run(self.pcl_trf_align)
 
-        self.pcl_trf_align_scaled = self.pcl_trf_align * scaling
+        self.pcl_trf_align_scaled = [pcl * scaling for pcl in self.pcl_trf_align]
 
     def merge(self):
         return self.merging.run(self.pcl_trf_align_scaled, self.batched_pred)
+
+RUN = True
+if RUN:
+    conf_out = 0.6
+    conf_trs = 1.0
+    conf_dict = {
+    0:conf_out, 1:conf_out, 2:conf_out,
+    3:conf_trs, 4:conf_trs, 5:conf_trs, 6:conf_trs, 7:conf_trs, 8:conf_trs
+    }
+    proc = BatchedVGGT("local_ws/MI_front_area", verbose=True, use_cached_batches=False, use_cached_pcls=False, max_image_size=30, conf_thres_visu=0.1, conf_thres_align=0.3, color=True, transition_filter=conf_dict)
+    batched_pred, pcl, color = proc.run()
+    np.savez('pcl_data.npz', array1=pcl, array2=color, array3=batched_pred)
