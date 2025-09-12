@@ -10,6 +10,7 @@ from vggt_proc import VGGTproc
 from merging import Merging
 from scaling.main import Scaling
 from sim3_icp import Sim3ICP
+from glob_align import GlobAlign
 
 
 class BatchedVGGT:
@@ -29,7 +30,8 @@ class BatchedVGGT:
                  mode='concatenate',
                  trf_mode='SE3',
                  image_path=None,
-                 transition_filter={}):
+                 transition_filter={},
+                 loop_closure=[]):
         """
         
         """
@@ -39,6 +41,7 @@ class BatchedVGGT:
         self.trf_mode = trf_mode
         self.transition_filter = transition_filter
         self.conf_thres_visu = conf_thres_visu
+        self.loop_closure = loop_closure
 
         if trf_mode not in ['SE3', 'rotation']:
             print(f"[Warning] Unsupported trf_mode '{trf_mode}'. Expected 'SE3' or 'rotation' (default: SE3).")
@@ -57,7 +60,8 @@ class BatchedVGGT:
         self.batching = Batching(data_path, self.image_path, verbose=verbose, use_cached=use_cached_batches, max_image_size=max_image_size)
         self.vggt_proc = VGGTproc(verbose=verbose, conf_thres_visu=conf_thres_visu, conf_thres_align=conf_thres_align)
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
-        self.glob_align = Sim3ICP(self.pcls_path, verbose=verbose, mode='umeyama_weighted')
+        self.loc_align = Sim3ICP(self.pcls_path, verbose=verbose, mode='umeyama_weighted', loop_closure=self.loop_closure)
+        self.glob_align = GlobAlign(self.pcls_path, verbose=verbose)
 
         # Scaling
         self.scaling = Scaling(self.batches)
@@ -72,8 +76,10 @@ class BatchedVGGT:
         self.pcl_transformed = []  # shape: list of (n, h, w, 3)
         self.pcl_transformed_filtered = []  # shape: list of (n, h, w, 3)
         self.pcl_trf_align = []  # shape: list of (n, h, w, 3)
-        self.pcl_trf_align_scaled = []  # shape: list of (n, h, w, 3)
+        self.pcl_glob_align = []  # shape: list of (n, h, w, 3)
+        self.pcl_glob_align_scaled = []  # shape: list of (n, h, w, 3)
         self.transformation_chain_to_world = []
+        self.pairwise_transformation = []
 
         self.weight_flag = 2.0 # weight or None for no weight
 
@@ -85,12 +91,14 @@ class BatchedVGGT:
             self.batched_predictions()
             self.create_trans_chain()
             self.transform_pcls()
-            self.pcl_trf_align = self.glob_align.run(self.pcl_transformed, self.pcl_transformed_filtered, self.batched_pred)
+            self.local_alignment()
             self._cache_data()
             self.unload()
         else:
             self._load_cache()
             print("Loaded pcls from cache")
+
+        self.global_alignment()
 
         self.apply_scaling()
         pcl, colors = self.merge()
@@ -245,7 +253,7 @@ class BatchedVGGT:
     def _cache_data(self):
         try:
             with open(self.cache_path, 'wb') as f:
-                pickle.dump((self.batched_pred, self.pcl_transformed, self.transformation_chain, self.pcl_trf_align), f)
+                pickle.dump((self.batched_pred, self.pcl_transformed, self.pcl_transformed_filtered, self.transformation_chain, self.transformation_chain_to_world, self.pcl_trf_align, self.pairwise_transformation), f)
         except Exception as e:
             if self.verbose:
                 print(f"Failed to save pcl cache: {e}")
@@ -258,8 +266,7 @@ class BatchedVGGT:
 
         try:
             with open(self.cache_path, 'rb') as f:
-                self.batched_pred, self.pcl_transformed, self.transformation_chain, self.pcl_trf_align = pickle.load(f)
-            
+                self.batched_pred, self.pcl_transformed, self.pcl_transformed_filtered, self.transformation_chain, self.transformation_chain_to_world, self.pcl_trf_align, self.pairwise_transformation = pickle.load(f)
             return True
 
         except Exception as e:
@@ -276,10 +283,20 @@ class BatchedVGGT:
         gc.collect()
         torch.cuda.empty_cache()
 
-    def apply_scaling(self):
-        scaling = self.scaling.run(self.pcl_trf_align)
+    def local_alignment(self):
+        self.pcl_trf_align, self.pairwise_transformation, self.loop_closure = self.loc_align.run(self.pcl_transformed, self.pcl_transformed_filtered, self.batched_pred)
 
-        self.pcl_trf_align_scaled = self.pcl_trf_align * scaling
+    def global_alignment(self):
+        if len(self.loop_closure) > 0:
+            self.pcl_glob_align = self.glob_align.run(self.loop_closure, self.batched_pred)
+        else:
+            print("No loop constraints provided. Point clouds only locally aligned.")
+            self.pcl_glob_align = self.pcl_trf_align
+
+    def apply_scaling(self):
+        scaling = self.scaling.run(self.pcl_glob_align)
+
+        self.pcl_glob_align_scaled = [pcl * scaling for pcl in self.pcl_glob_align]
 
     def merge(self):
-        return self.merging.run(self.pcl_trf_align_scaled, self.batched_pred)
+        return self.merging.run(self.pcl_glob_align_scaled, self.batched_pred)

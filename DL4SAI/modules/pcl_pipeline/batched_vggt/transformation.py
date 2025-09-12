@@ -1,4 +1,5 @@
 import os
+import shutil
 import torch
 import numpy as np
 import pypose as pp
@@ -14,13 +15,23 @@ class Trf:
         self.transformation_chain_to_world = []
 
         if self.verbose:
-            os.makedirs(self.pcl_path, exist_ok=True)
-
+            if not os.path.exists(self.pcl_path):
+                os.makedirs(self.pcl_path)
 
     def run(self, pcl_list, pairwise_transforms, batched_pred):
+        self.path_cleanup()
         return self.transform_pcls(pcl_list, pairwise_transforms, batched_pred)
 
-    
+
+    def path_cleanup(self):
+        """
+        
+        """
+        if self.verbose:
+            if os.path.exists(self.pcl_path):
+                shutil.rmtree(self.pcl_path)
+            os.makedirs(self.pcl_path)
+
     def to_pcd_file(self, pcl, color, path):
         """
         

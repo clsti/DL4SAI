@@ -3,13 +3,14 @@ import numpy as np
 from transformation import Trf
 
 class Sim3ICP:
-    def __init__(self, pcls_path, verbose=False, mode='umeyama_weighted'):
+    def __init__(self, pcls_path, verbose=False, mode='umeyama_weighted', loop_closure=[]):
         """
         
         """
 
         self.pcls_path = pcls_path
         self.verbose = verbose
+        self.loop_closure = loop_closure
 
         self.trf_initial = Trf(os.path.join(self.pcls_path, "initial"), verbose=verbose)
         self.trf_loc_align = Trf(os.path.join(self.pcls_path, "loc_align"), verbose=verbose)
@@ -21,10 +22,13 @@ class Sim3ICP:
             self.mode = mode
 
     def run(self, pcl_transformed, pcl_transformed_filtered, batched_pred):
+        self.trf_initial.path_cleanup()
         pairwise_transforms = self.compute_pairwise_transforms(pcl_transformed, batched_pred)
         pcl = self.trf_loc_align.run(pcl_transformed_filtered, pairwise_transforms, batched_pred)
 
-        return pcl
+        loop_closure = self.compute_loop_closure_constr(pcl_transformed, batched_pred)
+
+        return pcl, pairwise_transforms, loop_closure
     
     def compute_pairwise_transforms(self, pcl_transformed, batched_pred):
         '''
@@ -94,6 +98,58 @@ class Sim3ICP:
             pairwise_transforms[(i, j)] = (s, R, t)
 
         return pairwise_transforms
+
+    def compute_loop_closure_constr(self, pcl_transformed, batched_pred):
+        """
+        
+        """
+        if len(self.loop_closure) > 0:
+            loop_closure = []
+            for (j, i) in self.loop_closure:
+                # Extract point clouds, confidence values and masks
+                tgt_raw = pcl_transformed[i]
+                tgt_vid_sizes = batched_pred[i]["vid_img_sizes"]
+                tgt_confidence_raw = batched_pred[i]["confidence"]
+                tgt_conf_mask_align_raw = batched_pred[i]["conf_mask_align"]
+                src_raw = pcl_transformed[j]
+                src_vid_sizes = batched_pred[j]["vid_img_sizes"]
+                src_confidence_raw = batched_pred[j]["confidence"]
+                src_conf_mask_align_raw = batched_pred[j]["conf_mask_align"]
+
+                # Extract overlapping point clouds and confidence values
+                tgt = tgt_raw[:tgt_vid_sizes[0]].reshape(-1, 3)
+                tgt_confidence = tgt_confidence_raw[:tgt_vid_sizes[0]].reshape(-1)
+                tgt_conf_mask_align = tgt_conf_mask_align_raw[:tgt_vid_sizes[0]].reshape(-1)
+                src = src_raw[src_vid_sizes[0]:].reshape(-1, 3)
+                src_confidence = src_confidence_raw[src_vid_sizes[0]:].reshape(-1)
+                src_conf_mask_align = src_conf_mask_align_raw[src_vid_sizes[0]:].reshape(-1)
+
+                if self.verbose:
+                    print(f"Loop closure: tgt shape original: {tgt.shape}, src shape original: {src.shape}")
+
+                # Filter point clouds based and confidences based on masks
+                mask_align_combinded = tgt_conf_mask_align & src_conf_mask_align
+                tgt = tgt[mask_align_combinded]
+                tgt_confidence = tgt_confidence[mask_align_combinded]
+                src = src[mask_align_combinded]
+                src_confidence = src_confidence[mask_align_combinded]
+
+                if self.mode == 'umeyama_weighted':
+                    s, R, t = self.umeyama(src, tgt, src_confidence, tgt_confidence, with_scale=True)
+                elif self.mode == 'umeyama':
+                    s, R, t = self.umeyama(src, tgt)
+                elif self.mode == 'scale_translation':
+                    s, R, t = self.align_point_clouds_scale_translation(src, tgt)
+                else:
+                    print(f"Unknown mode: {self.mode}. Using 'umeyama_weighted' as default.")
+                    s, R, t = self.umeyama(src, tgt, src_confidence, tgt_confidence, with_scale=True)
+
+                loop_closure.append((j, i, (s, np.eye(3), np.zeros(3))))
+            print("LOOP CLOSURE")
+            print(loop_closure)
+            return loop_closure
+        else:
+            return self.loop_closure
 
     def align_point_clouds_scale_translation(self, src, tgt):
         """
