@@ -72,13 +72,13 @@ class BatchedVGGT:
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
         self.glob_align = Sim3ICP(self.pcls_path, verbose=verbose, mode='umeyama_weighted')
 
-        # Scaling
-        self.scaling = Scaling(self.batches)
-
         # Get batches
         self.batches = self.batching.get_batches()
         self.batches_size = self.batching.get_batches_size()
-
+        
+        # Scaling
+        self.scaling = Scaling(self.batches)
+        
         self.batched_pred = []
 
         self.transformation_chain = []
@@ -285,7 +285,7 @@ class BatchedVGGT:
         """
         scaling = self.scaling.run(self.pcl_trf_align)
 
-        self.pcl_trf_align_scaled = self.pcl_trf_align * scaling
+        self.pcl_trf_align_scaled = [pcl * scaling for pcl in self.pcl_trf_align]
 
     def merge(self):
         """
