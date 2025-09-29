@@ -56,6 +56,8 @@ class Scaling:
                                        shared_intrinsics=True)
             
     def get_scale(self, source, target):
+        if len(target)<10000:
+            return None, None
         source = source[np.random.permutation(np.arange(len(source)))[:10000]]
         target = target[np.random.permutation(np.arange(len(target)))[:10000]]
         mean_source = np.mean(source, axis=0, keepdims=True)
@@ -72,7 +74,10 @@ class Scaling:
 
         for _ in range(1):
             # Find closest points in target for each source point
-            _, indices = target_kdtree.query(source, k=1)
+            dists, indices = target_kdtree.query(source, k=1)
+            source = source[dists != np.inf]
+            indices = indices[dists != np.inf]
+
             target_matched = target[indices]   # shape: (N_src, 3)
 
             source = source.T  # (3, N)
@@ -125,18 +130,27 @@ class Scaling:
             batches = [[batch[j] for j in np.arange(0, len(batch), len(batch)//4)] for batch in batches]
             scales = []
             errors = []
+            skipped=False
             for batch in batches:
                 target = self.run_master(batch)
                 target = np.asarray(target.points)
                 s, e = self.get_scale(pcl[i], target)
+                if s is None:
+                    skipped=True
+                    break
                 scales.append(s) #TODO: what is the format of pcl
                 errors.append(e)
-            scales = np.array(scales)
-            errors = np.array(errors)
-            results.append([scales.mean(), scales.var(), errors.mean(), np.mean([laplacian_variance(img) for img in batch])])
-            print(results[-1][-1])
+            if skipped:
+                results.append([0, np.inf, 0, 0])
+            else:
+                scales = np.array(scales)
+                errors = np.array(errors)
+                results.append([scales.mean(), scales.var(), errors.mean(), np.mean([laplacian_variance(img) for img in batch])])
+                print(results[-1][-1])
+            skipped=False
         
         results = np.array(results)
+        results[np.isnan(results)]=np.inf
         if True or verbose:
             print(results)
 

@@ -1,18 +1,28 @@
 import os
 import numpy as np
-from transformation import Trf
+import open3d as o3d
 
 class Sim3ICP:
     def __init__(self, pcls_path, verbose=False, mode='umeyama_weighted'):
         """
-        
+        Local alignment of point clouds using Sim(3) transformations.
+
+        Args:
+            pcls_path (str): Directory path for saving intermediate point clouds.
+            verbose (bool): Print debugging info.
+            mode (str): Alignment method. Options:
+                - 'umeyama_weighted': Weighted Umeyama algorithm
+                - 'umeyama': Standard Umeyama algorithm
+                - 'scale_translation': Only scale + translation alignment
         """
 
         self.pcls_path = pcls_path
         self.verbose = verbose
+        self.transformation_chain_to_world = []
 
-        self.trf_initial = Trf(os.path.join(self.pcls_path, "initial"), verbose=verbose)
-        self.trf_loc_align = Trf(os.path.join(self.pcls_path, "loc_align"), verbose=verbose)
+        if self.verbose:
+            os.makedirs(os.path.join(self.pcls_path, "initial"), exist_ok=True)
+            os.makedirs(os.path.join(self.pcls_path, "trsf"), exist_ok=True)
 
         if mode not in ['umeyama_weighted', 'umeyama', 'scale_translation']:
             print(f"[Warning] Unsupported mode '{mode}'. Expected 'umeyama_weighted', 'umeyama', or 'scale_translation'. Using 'umeyama_weighted' as default.")
@@ -21,14 +31,24 @@ class Sim3ICP:
             self.mode = mode
 
     def run(self, pcl_transformed, pcl_transformed_filtered, batched_pred):
+        """
+        Main class method.
+        """
         pairwise_transforms = self.compute_pairwise_transforms(pcl_transformed, batched_pred)
-        pcl = self.trf_loc_align.run(pcl_transformed_filtered, pairwise_transforms, batched_pred)
+        pcl = self.transform_pcls(pcl_transformed_filtered, pairwise_transforms, batched_pred)
 
         return pcl
     
     def compute_pairwise_transforms(self, pcl_transformed, batched_pred):
         '''
-        
+        Estimate pairwise Sim(3) transformations between consecutive point clouds.
+
+        Args:
+            pcl_transformed (list[np.ndarray]): Sequence of transformed point clouds.
+            batched_pred (list[dict]): List of predictions.
+
+        Returns:
+            dict: Pairwise transforms {(i, j): (s, R, t)} from pcl[j] -> pcl[i].
         '''
         pairwise_transforms = {}
         n = len(pcl_transformed) - 1
@@ -75,11 +95,11 @@ class Sim3ICP:
                 tgt_color = batched_pred[i]["colors"]
                 src_color = batched_pred[j]["colors"]
 
-                tgt_name = os.path.join(self.pcls_path, "initial", f"pcd_{i}.ply")
-                src_name = os.path.join(self.pcls_path, "initial", f"pcd_{j}.ply")
+                tgt_name = os.path.join(self.pcls_path, "initial", f"pcd_{j}.ply")
+                src_name = os.path.join(self.pcls_path, "initial", f"pcd_{i}.ply")
 
-                self.trf_initial.to_pcd_file(tgt_ply.reshape(-1, 3), tgt_color, tgt_name)
-                self.trf_initial.to_pcd_file(src_ply.reshape(-1, 3), src_color, src_name)
+                self.to_pcd_file(tgt_ply.reshape(-1, 3), tgt_color, tgt_name)
+                self.to_pcd_file(src_ply.reshape(-1, 3), src_color, src_name)
 
             if self.mode == 'umeyama_weighted':
                 s, R, t = self.umeyama(src, tgt, src_confidence, tgt_confidence, with_scale=True)
@@ -200,3 +220,109 @@ class Sim3ICP:
         t = tgt_mean - s * R @ src_mean
 
         return s, R, t
+
+    def to_pcd_file(self, pcl, color, path):
+        """
+        Save point cloud with colors as a .ply file.
+        """
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pcl)
+        pcd.colors = o3d.utility.Vector3dVector(color/255.0)
+        o3d.io.write_point_cloud(path, pcd, write_ascii=False)
+
+    def to_transformation_matrix(self, s, R, t):
+        """
+        Build a transformation matrix from scale, rotation, and translation.
+        """
+        H = np.eye(4)
+        H[:3, :3] = s * R
+        H[:3, 3] = t
+        return H
+
+    def sim3_transformation(self, points, H_sim3):
+        """
+        Apply a Sim(3) transformation to a set of points.
+
+        Args:
+            points (ndarray): Shape (n, h, w, 3) or (N, 3).
+            H_sim3 (ndarray): 4x4 Sim(3) transformation matrix.
+
+        Returns:
+            ndarray: Transformed points.
+        """
+        orig_shape = points.shape
+        n_points = np.prod(orig_shape[:-1])
+        points_flat = points.reshape(-1, 3)
+
+        points_h = np.hstack((points_flat, np.ones((n_points, 1))))
+        # ((4,4) @ (n,4).T).T = (n,4)
+        points_trans_h = (H_sim3 @ points_h.T).T 
+        points_trans = points_trans_h[:, :3].reshape(orig_shape)
+        return points_trans
+    
+    def sim3_transformation_extrinsics(self, extrinsics, H_sim3):
+        """
+        Apply a Sim(3) transformation to camera extrinsic matrices.
+
+        Args:
+            extrinsics (ndarray): Shape (n, 3, 4).
+            H_sim3 (ndarray): 4x4 Sim(3) transformation.
+
+        Returns:
+            ndarray: Transformed extrinsics (n, 3, 4).
+        """
+        n_extrinsics = extrinsics.shape[0]
+
+        extrinsics_h = np.concatenate([
+            extrinsics,
+            np.tile(np.array([0, 0, 0, 1])[None, None, :], (n_extrinsics, 1, 1))  # (n, 1, 4)
+        ], axis=1)
+
+        extrinsics_trans = H_sim3 @ extrinsics_h
+        extrinsics = extrinsics_trans[:, :3, :]  # (n, 3, 4)
+
+        return extrinsics
+    
+    def transform_pcls(self, pcl_list, pairwise_transforms, batched_pred):
+        """
+        Transform all point clouds into the reference frame.
+
+        Args:
+            pcl_list (list[ndarray]): List of point clouds (n, h, w, 3).
+            pairwise_transforms (dict): Pairwise transforms {(i, j): (s, R, t)}.
+            batched_pred (list[dict]): List of predictions.
+
+        Returns:
+            list[ndarray]: Aligned point clouds.
+        """
+        pcl_transformed = [pcl_list[0].copy()]
+        cumulative_transform = np.eye(4)
+
+        if self.verbose:
+            path = os.path.join(self.pcls_path, "trsf", f"pcd_0.ply")
+            self.to_pcd_file(pcl_list[0].reshape(-1, 3), batched_pred[0]["colors"], path)
+
+        for (i, j), (s, R, t) in pairwise_transforms.items():
+            if self.verbose:
+                self.transformation_chain_to_world.append(cumulative_transform)
+
+            H = self.to_transformation_matrix(s, R, t)
+            
+            # Update cumulative transformation
+            cumulative_transform = cumulative_transform @ H
+
+            if self.verbose:
+                self.transformation_chain_to_world.append(cumulative_transform)
+
+            pcl_trans = self.sim3_transformation(pcl_list[j], cumulative_transform)
+            batched_pred[j]["extrinsics"] = self.sim3_transformation_extrinsics(batched_pred[j]["extrinsics"], cumulative_transform)
+            batched_pred[j]["camera_positions_pointwise"] = self.sim3_transformation(batched_pred[j]["camera_positions_pointwise"], cumulative_transform)
+
+            if self.verbose:
+                color = batched_pred[j]["colors"]
+                tgt_name = os.path.join(self.pcls_path, "trsf", f"pcd_{j}.ply")
+                self.to_pcd_file(pcl_trans.reshape(-1, 3), color, tgt_name)
+
+            pcl_transformed.append(pcl_trans)
+
+        return pcl_transformed

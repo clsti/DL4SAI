@@ -14,7 +14,7 @@ from sim3_icp import Sim3ICP
 
 class BatchedVGGT:
     """
-    Batched VGGT processing
+    Batched VGGT processing pipeline.
     """
 
     def __init__(self, 
@@ -31,7 +31,20 @@ class BatchedVGGT:
                  image_path=None,
                  transition_filter={}):
         """
-        
+        Initialize the BatchedVGGT pipeline.
+        Args:
+            data_path (str): Path to dataset.
+            verbose (bool): Print debugging info.
+            use_cached_batches (bool): Reuse batches if available.
+            use_cached_pcls (bool): Load cached point clouds.
+            max_image_size (int): Maximum number for images per batch.
+            conf_thres_visu (float): Confidence threshold for visualization.
+            conf_thres_align (float): Confidence threshold for local alignment.
+            color (bool): Whether to keep color.
+            mode (str): Merging mode.
+            trf_mode (str): Transformation mode ('SE3' or 'rotation').
+            image_path (str): Custom path for images (optional).
+            transition_filter (dict): Per-batch custom thresholds.
         """
 
         self.verbose = verbose
@@ -59,13 +72,13 @@ class BatchedVGGT:
         self.merging = Merging(mode=mode, verbose=verbose, color=color)
         self.glob_align = Sim3ICP(self.pcls_path, verbose=verbose, mode='umeyama_weighted')
 
-        # Scaling
-        self.scaling = Scaling(self.batches)
-
         # Get batches
         self.batches = self.batching.get_batches()
         self.batches_size = self.batching.get_batches_size()
-
+        
+        # Scaling
+        self.scaling = Scaling(self.batches)
+        
         self.batched_pred = []
 
         self.transformation_chain = []
@@ -79,7 +92,7 @@ class BatchedVGGT:
 
     def run(self):
         """
-        
+        Main class method.
         """
         if not self.use_cached_pcls:
             self.batched_predictions()
@@ -99,7 +112,7 @@ class BatchedVGGT:
 
     def batched_predictions(self):
         """
-        
+        Run VGGT model on each batch of images.
         """
         # process batches
         for i, images in enumerate(self.batches):
@@ -139,6 +152,9 @@ class BatchedVGGT:
         return SE3.from_components(rotation_matrix, translation_vector)
 
     def get_average(self, extr_curr, extr_next):
+        """
+        Compute average relative transform between two sets of extrinsics.
+        """
         assert len(extr_curr) == len(extr_next), "Batch size mismatch! "
 
         SE3_curr = [self.to_SE3(H) for H in extr_curr]
@@ -158,7 +174,7 @@ class BatchedVGGT:
 
     def create_trans_chain(self):
         """
-        
+        Build chain of relative transformations between consecutive batches.
         """
         self.transformation_chain.append(self.to_SE3())
 
@@ -176,7 +192,7 @@ class BatchedVGGT:
 
     def SE3transform_pcl(self, H, points):
         """
-        Apply SE(3) matrix to batch of (n, h, w, 3) points
+        Apply SE(3) transformation matrix to batch of (n, h, w, 3) points.
         """
         orig_shape = points.shape
         n_points = np.prod(orig_shape[:-1])
@@ -190,7 +206,7 @@ class BatchedVGGT:
 
     def Rtransform_pcl(self, H, points):
         """
-        Apply Rotation matrix to batch of (n, h, w, 3) points
+        Apply Rotation matrix to batch of (n, h, w, 3) points.
         """
         orig_shape = points.shape
         points_flat = points.reshape(-1, 3)
@@ -216,7 +232,7 @@ class BatchedVGGT:
 
     def transform_pcls(self):
         """
-        Transform all point clouds into the same coordinate frame
+        Transform all predicted point clouds into the same coordinate frame.
         """
         cumulative_transform = self.transformation_chain[0]
         self.transformation_chain_to_world.append(cumulative_transform)
@@ -277,9 +293,17 @@ class BatchedVGGT:
         torch.cuda.empty_cache()
 
     def apply_scaling(self):
+        """
+        Apply estimated scaling to aligned point clouds.
+        """
         scaling = self.scaling.run(self.pcl_trf_align)
 
-        self.pcl_trf_align_scaled = self.pcl_trf_align * scaling
+        self.pcl_trf_align_scaled = [pcl * scaling for pcl in self.pcl_trf_align]
 
     def merge(self):
+        """
+        Merge all scaled, aligned point clouds into a single unified one.
+        Returns:
+            merged point cloud and colors
+        """
         return self.merging.run(self.pcl_trf_align_scaled, self.batched_pred)
