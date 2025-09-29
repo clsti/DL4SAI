@@ -156,7 +156,7 @@ class BatchedVGGT:
         Compute average relative transform between two sets of extrinsics.
         """
         assert len(extr_curr) == len(extr_next), "Batch size mismatch! "
-        
+
         SE3_curr = [self.to_SE3(H) for H in extr_curr]
         SE3_next = [self.to_SE3(H) for H in extr_next]
 
@@ -203,7 +203,7 @@ class BatchedVGGT:
         points_trans_h = (H @ points_h.T).T 
         points_trans = points_trans_h[:, :3].reshape(orig_shape)
         return points_trans
-    
+
     def Rtransform_pcl(self, H, points):
         """
         Apply Rotation matrix to batch of (n, h, w, 3) points.
@@ -214,15 +214,28 @@ class BatchedVGGT:
         R = H[:3, :3]
         points_rotated = (R @ points_flat.T).T
         return points_rotated.reshape(orig_shape)
+    
+    def SE3transform_extrinsics(self, H, extrinsics):
+        """
+        
+        """
+        extr_new = []
+        for extr in extrinsics:
+            extr_inv = SE3.inverse(self.to_SE3(extr))
+            extr_new.append(SE3.inverse(H @ extr_inv))
+
+        extr_new = np.stack(extr_new, axis=0)
+        extr_new = extr_new[:, :3, :]
+            
+        return extr_new
+
 
     def transform_pcls(self):
         """
         Transform all predicted point clouds into the same coordinate frame.
         """
         cumulative_transform = self.transformation_chain[0]
-        if self.verbose:
-            self.transformation_chain_to_world.append(cumulative_transform)
-        
+        self.transformation_chain_to_world.append(cumulative_transform)
         for i, pred in enumerate(self.batched_pred):
             pcl = pred["vertices_raw"]
             pcl_filtered = pred["vertices"]
@@ -232,8 +245,7 @@ class BatchedVGGT:
             else:
                 # Update cumulative transformation
                 cumulative_transform = cumulative_transform @ self.transformation_chain[i]
-                if self.verbose:
-                    self.transformation_chain_to_world.append(cumulative_transform)
+                self.transformation_chain_to_world.append(cumulative_transform)
 
                 if self.trf_mode == 'rotation':
                     pcl_trans = self.Rtransform_pcl(cumulative_transform, pcl)
@@ -242,6 +254,7 @@ class BatchedVGGT:
                     pcl_trans = self.SE3transform_pcl(cumulative_transform, pcl)
                     pcl_trans_filtered = self.SE3transform_pcl(cumulative_transform, pcl_filtered)
 
+                pred["extrinsics"] = self.SE3transform_extrinsics(cumulative_transform, pred["extrinsics"])
                 self.pcl_transformed.append(pcl_trans)
                 self.pcl_transformed_filtered.append(pcl_trans_filtered)
 
@@ -269,7 +282,7 @@ class BatchedVGGT:
             if self.verbose:
                 print(f"Failed to load pcl cache: {e}")
             return False
-        
+
     def unload(self):
         """Free VGGT from GPU memory."""
         if self.vggt_proc.model is not None:
