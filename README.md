@@ -12,7 +12,7 @@ We present a metric 3D reconstruction pipeline that leverages recent transformer
 ## Installation
 ### 1. Clone this repository
 ```bash
-git clone https://github.com/clsti/DL4SAI.git
+git clone --recurse-submodules https://github.com/clsti/DL4SAI.git
 cd DL4SAI
 ```
 
