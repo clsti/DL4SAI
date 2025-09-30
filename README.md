@@ -1,5 +1,5 @@
 <div align="center">
-<h1>Building TUM in a Day</h1>
+  <h1><a href="assets/DL4SAI_Building_TUM_in_a_Day.pdf" target="_blank">Building TUM in a Day</a></h1>
 </div>
 
 **Building TUM in a Day** is a 3D reconstruction pipeline that combines **[VGGT](https://github.com/facebookresearch/vggt)**, **[NKSR](https://github.com/nv-tlabs/NKSR)**, and **[CityGaussian](https://github.com/Linketic/CityGaussian)**.
