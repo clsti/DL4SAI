@@ -67,13 +67,14 @@ python DL4SAI/main.py
 conda run -n <nksr_env_name> python '<path-to-project>/DL4SAI/DL4SAI/modules/densify_pipeline/nksr_adapter.py' <path-to-pointcloud.npz> <std-of-noise> <alpha> <use-GPU>  '<path-to-project>/DL4SAI/submodules/NKSR/examples' <path-to-normals.pt> <verbose> <device>
 ```
 ```bash
-conda run -n <nksr_env_name> python nksr_adapter.py \
-    --input <path-to-pointcloud.npz> \
-    --noise-std <std-of-noise> \
-    --alpha <alpha> \
-    --gpu <true|false> \
-    --examples-dir '<path-to-project>/DL4SAI/submodules/NKSR/examples' \
-    --normals <path-to-normals.pt> \
-    --verbose \
-    --device <device>
+# usage: all argumnts should be passed as strings
+conda run -n <nksr_env_name> python <path-to-project>/DL4SAI/DL4SAI/modules/densify_pipeline/nksr_adapter.py \
+    <path-to-pointcloud.npz> \
+    <std-of-noise> \
+    <alpha> \ # set to -1 if it should be estimated
+    <use-GPU> \
+    <path-to-project>/DL4SAI/submodules/NKSR/examples \
+    <path-to-normals.pt> \ # ignored if alpha=-1
+    <verbose> \
+    <device>
 ```
