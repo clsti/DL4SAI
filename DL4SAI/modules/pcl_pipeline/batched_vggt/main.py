@@ -5,11 +5,11 @@ import torch
 import gc
 from pymlg import SE3
 
-from batching import Batching
-from vggt_proc import VGGTproc
-from merging import Merging
-from scaling.main import Scaling
-from sim3_icp import Sim3ICP
+from .batching import Batching
+from .vggt_proc import VGGTproc
+from .merging import Merging
+from .scaling.main import Scaling
+from .sim3_icp import Sim3ICP
 
 
 class BatchedVGGT:
@@ -124,6 +124,7 @@ class BatchedVGGT:
 
             # run vggt
             vertices_raw, vertices, colors, conf, extrinsics, intrinsics, conf_mask_align, cam_pos_pointwise = self.vggt_proc.run(images)
+
             predictions = {
                 "vertices_raw": vertices_raw,
                 "vid_img_sizes": self.batches_size[i],
