@@ -67,7 +67,7 @@ python DL4SAI/main.py
 conda run -n <nksr_env_name> python '<path-to-project>/DL4SAI/DL4SAI/modules/densify_pipeline/nksr_adapter.py' <path-to-pointcloud.npz> <std-of-noise> <alpha> <use-GPU>  '<path-to-project>/DL4SAI/submodules/NKSR/examples' <path-to-normals.pt> <verbose> <device>
 ```
 ```bash
-# usage: all argumnts should be passed as strings
+# usage: all arguments except for  the nksr_env_name should be passed as strings
 conda run -n <nksr_env_name> python <path-to-project>/DL4SAI/DL4SAI/modules/densify_pipeline/nksr_adapter.py \
     <path-to-pointcloud.npz> \
     <std-of-noise> \
