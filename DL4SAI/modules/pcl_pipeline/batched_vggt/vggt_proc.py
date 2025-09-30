@@ -23,7 +23,12 @@ class VGGTproc:
 
     def __init__(self, verbose=False, pcl_pred="from_depth", conf_thres_visu=0.5, conf_thres_align=0.7):
         """
-        load model
+        Initialize VGGT processor.
+        Args:
+            verbose (bool): Print debugging info.
+            pcl_pred (str): Point cloud mode ("from_depth" or "3D_points").
+            conf_thres_visu (float): Confidence threshold for visualization.
+            conf_thres_align (float): Confidence threshold for point cloud alignment.
         """
         if pcl_pred not in ["from_depth", "3D_points"]:
             raise ValueError("Mode must be either 'from_depth' or '3D_points'")
@@ -49,16 +54,22 @@ class VGGTproc:
         self.conf_mask_align = None
 
     def run(self, image_paths, target_file=None):
+        """
+        Main class method.
+        """
         self._proc(image_paths)
         self._post_proc(target_file)
 
         return self.vertices_raw, self.vertices_3d, self.colors_rgb, self.conf, self.camera_extrinsics, self.intrinsics, self.conf_mask_align, self.camera_positions_pointwise
     
     def set_conf_thres_visu(self, conf):
+        """Update visualization confidence threshold."""
         self.conf_thres_visu = conf
 
     def _proc(self, image_paths):
-        # preprocess images
+        """
+        Preprocess input images and run the VGGT model.
+        """
         images = load_and_preprocess_images(image_paths).to(self.device)
 
         # run model
@@ -81,6 +92,9 @@ class VGGTproc:
         self.predictions["world_points_from_depth"] = world_points
     
     def _post_proc(self, target_file=None):
+        """
+        Post processing of point clouds.
+        """
         if "3D_points" in self.pcl_pred:
             if "world_points" in self.predictions:
                 pred_world_points = self.predictions["world_points"]  # No batch dimension to remove

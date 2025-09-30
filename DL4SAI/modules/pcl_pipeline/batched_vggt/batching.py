@@ -12,7 +12,15 @@ class Batching:
     """
     def __init__(self, data_path, image_path, verbose=False, use_cached=False, max_image_size=80, file_type=('.mp4', '.mov')):
         """
-        
+        Initialize the Batching class.
+
+        Args:
+            data_path (str): Directory containing video files.
+            image_path (str): Directory where extracted images will be stored.
+            verbose (bool): Print debugging info.
+            use_cached (bool): Load batches from cache if available.
+            max_image_size (int): Maximum number of frames per batch.
+            file_type (tuple): Allowed video file type.
         """
         if not os.access(data_path, os.W_OK | os.X_OK):
             raise PermissionError(f"No write/execute access to: {data_path}")
@@ -189,6 +197,14 @@ class Batching:
         return saved_paths
 
     def _create_batches(self):
+        """
+        Create batches from consecutive videos.
+
+        Returns:
+            tuple:
+                batches (list): Each batch is a list of image paths.
+                batches_size (list): List of (n_left, n_right) frame counts.
+        """
         n = len(self.videos)
         batches = []
         batches_size = []

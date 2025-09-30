@@ -5,7 +5,15 @@ import open3d as o3d
 class Sim3ICP:
     def __init__(self, pcls_path, verbose=False, mode='umeyama_weighted'):
         """
-        
+        Local alignment of point clouds using Sim(3) transformations.
+
+        Args:
+            pcls_path (str): Directory path for saving intermediate point clouds.
+            verbose (bool): Print debugging info.
+            mode (str): Alignment method. Options:
+                - 'umeyama_weighted': Weighted Umeyama algorithm
+                - 'umeyama': Standard Umeyama algorithm
+                - 'scale_translation': Only scale + translation alignment
         """
 
         self.pcls_path = pcls_path
@@ -23,6 +31,9 @@ class Sim3ICP:
             self.mode = mode
 
     def run(self, pcl_transformed, pcl_transformed_filtered, batched_pred):
+        """
+        Main class method.
+        """
         pairwise_transforms = self.compute_pairwise_transforms(pcl_transformed, batched_pred)
         pcl = self.transform_pcls(pcl_transformed_filtered, pairwise_transforms, batched_pred)
 
@@ -30,7 +41,14 @@ class Sim3ICP:
     
     def compute_pairwise_transforms(self, pcl_transformed, batched_pred):
         '''
-        
+        Estimate pairwise Sim(3) transformations between consecutive point clouds.
+
+        Args:
+            pcl_transformed (list[np.ndarray]): Sequence of transformed point clouds.
+            batched_pred (list[dict]): List of predictions.
+
+        Returns:
+            dict: Pairwise transforms {(i, j): (s, R, t)} from pcl[j] -> pcl[i].
         '''
         pairwise_transforms = {}
         n = len(pcl_transformed) - 1
@@ -205,7 +223,7 @@ class Sim3ICP:
 
     def to_pcd_file(self, pcl, color, path):
         """
-        
+        Save point cloud with colors as a .ply file.
         """
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pcl)
@@ -223,7 +241,14 @@ class Sim3ICP:
 
     def sim3_transformation(self, points, H_sim3):
         """
-        Apply a Sim(3) transformation (scale, rotation, translation) to a batch of (n, h, w, 3) points.
+        Apply a Sim(3) transformation to a set of points.
+
+        Args:
+            points (ndarray): Shape (n, h, w, 3) or (N, 3).
+            H_sim3 (ndarray): 4x4 Sim(3) transformation matrix.
+
+        Returns:
+            ndarray: Transformed points.
         """
         orig_shape = points.shape
         n_points = np.prod(orig_shape[:-1])
@@ -237,7 +262,14 @@ class Sim3ICP:
     
     def sim3_transformation_extrinsics(self, extrinsics, H_sim3):
         """
-        Apply a Sim(3) transformation to a batch of extrinsics matrices (n, 3,4).
+        Apply a Sim(3) transformation to camera extrinsic matrices.
+
+        Args:
+            extrinsics (ndarray): Shape (n, 3, 4).
+            H_sim3 (ndarray): 4x4 Sim(3) transformation.
+
+        Returns:
+            ndarray: Transformed extrinsics (n, 3, 4).
         """
         n_extrinsics = extrinsics.shape[0]
 
@@ -253,14 +285,15 @@ class Sim3ICP:
     
     def transform_pcls(self, pcl_list, pairwise_transforms, batched_pred):
         """
-        Transform all point clouds into the frame of pcl_list[0].
+        Transform all point clouds into the reference frame.
 
         Args:
-            pcl_list: list of N point clouds as (N, H, W, 3) np.ndarrays
-            pairwise_transforms: dict of {(i, j): (s, R, t)} representing transforms from pcl[i] to pcl[j]
+            pcl_list (list[ndarray]): List of point clouds (n, h, w, 3).
+            pairwise_transforms (dict): Pairwise transforms {(i, j): (s, R, t)}.
+            batched_pred (list[dict]): List of predictions.
 
         Returns:
-            List of aligned point clouds in the same frame
+            list[ndarray]: Aligned point clouds.
         """
         pcl_transformed = [pcl_list[0].copy()]
         cumulative_transform = np.eye(4)
