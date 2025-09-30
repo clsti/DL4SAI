@@ -10,11 +10,11 @@ import subprocess
 import inspect
 
 class NKSRAdapter:
-    def _init__(self,
+    def __init__(self,
                 data_path='./pcl_data.npz',
                 nksr_path="submodules/NKSR/examples",
                 normal_path="normals.pt",
-                std=None,
+                std=-1,
                 alpha=1,
                 use_GPU=True,
                 verbose=True):
@@ -27,28 +27,26 @@ class NKSRAdapter:
         self.nksr_path = nksr_path
 
         if self.use_GPU:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
-            self.device = torch.device("cpu")
+            self.device = "cpu"
 
         self.normal_path = normal_path
     
     def run(self):
-        script_path = inspect.getfile(__file__)
+        script_path = __file__
         subprocess.run(
-            ["conda", "run", "-n", "nksr", "python", script_path, self.data_path, self.std, self.alpha, self.use_GPU, self.nksr_path, self.normal_path, self.verbose, self.device],
+            ["conda", "run", "-n", "prak", "python", script_path, self.data_path, str(self.std), str(self.alpha), str(self.use_GPU), self.nksr_path, self.normal_path, str(self.verbose), self.device],
             check=True
         )
 
-def run_in_env(data_path, std, alpha, use_GPU, nksr_path, normal_path, device, verbose):
+def run_in_env(data_path, std, alpha, use_GPU, nksr_path, normal_path, verbose, device):
 
-    import numpy as np
-    import nksr
-    import open3d as o3d
-    from pycg import vis
-    from sklearn.neighbors import NearestNeighbors
-    from tools.get_std import get_std
-    
+    std = float(std)
+    alpha = float(alpha)
+    use_GPU = bool(strtobool(use_GPU))
+    verbose = bool(strtobool(verbose))
+    device = torch.device(device)
     sys.path.insert(0, nksr_path)
     data = np.load(data_path, allow_pickle=True)
     pcl = data['array1'].reshape(-1, 3)
@@ -58,7 +56,7 @@ def run_in_env(data_path, std, alpha, use_GPU, nksr_path, normal_path, device, v
     color = data['array2'] / 255.0
     print("Color shape:", color.shape)
 
-    if std is None or not os.path.exists(normal_path):
+    if std == -1 or not os.path.exists(normal_path):
         print("estimatating std")
         std, points, normals = get_std(data, normal_fn=nksr.get_estimate_normal_preprocess_fn(64, 90.0))
         input_xyz = torch.from_numpy(np.asarray(pcl)[inds]).float().to(device) * (0.1/(std * alpha))
@@ -131,7 +129,16 @@ def run_in_env(data_path, std, alpha, use_GPU, nksr_path, normal_path, device, v
 
 if __name__ == "__main__":
     import sys
+    import numpy as np
+    import nksr
+    import open3d as o3d
+    from pycg import vis
+    from sklearn.neighbors import NearestNeighbors
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    from tools.get_std import get_std
+    from distutils.util import strtobool
 
     if len(sys.argv) == 9:
-        run_in_env(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8], sys.argv[9])
+        run_in_env(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8])
     

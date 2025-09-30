@@ -1,7 +1,5 @@
-
-from densify_pipeline.nksr_adapter import NKSRAdapter
-from densify_pipeline.citygaussian_adapter import CityGaussianAdapter
-
+from ..densify_pipeline.nksr_adapter import NKSRAdapter
+from ..densify_pipeline.citygaussian_adapter import CityGaussianAdapter
 
 class Adapter:
     def __init__(self, densification_mode, image_path, **kwargs):
