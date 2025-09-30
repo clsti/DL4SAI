@@ -25,6 +25,9 @@ This project builds on several external components. Please install them followin
 ## Quick start
 After successful installation of the packages, you can run batched VGGT processing with the following code:
 ```python
+from modules.pcl_pipeline.batched_vggt.main import BatchedVGGT
+import numpy as np
+
 # Confidence thresholds for filtering
 conf_out = 0.6
 conf_trs = 1.0
