@@ -1,0 +1,25 @@
+THIRD-PARTY LICENSES
+====================
+
+This project makes use of third-party components. Their license information is listed below.
+
+------------------------------------------------------------
+FacebookResearch VGGt
+- Repository: facebookresearch/vggt
+- License text: https://github.com/facebookresearch/vggt/blob/main/LICENSE.txt
+------------------------------------------------------------
+
+NV-TLabs NKSR
+- Repository: nv-tlabs/NKSR
+- License text: https://github.com/nv-tlabs/NKSR/blob/public/LICENSE.txt
+------------------------------------------------------------
+
+Linketic CityGaussian
+- Repository: Linketic/CityGaussian
+- License text: https://github.com/Linketic/CityGaussian/blob/main/LICENSE.md?plain=1
+------------------------------------------------------------
+
+DecarGroup pymlg
+- Repository: decargroup/pymlg
+- License text: https://github.com/decargroup/pymlg/blob/main/LICENSE
+------------------------------------------------------------

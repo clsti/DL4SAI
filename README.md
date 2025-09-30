@@ -78,3 +78,6 @@ conda run -n <nksr_env_name> python <path-to-project>/DL4SAI/DL4SAI/modules/dens
     <verbose> \
     <device>
 ```
+
+## Licence Information
+Please see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for information about the licenses of third-party components used.
