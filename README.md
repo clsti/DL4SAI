@@ -57,3 +57,12 @@ np.savez(
     predictions=batched_pred
 )
 ```
+
+## Running the Pipeline
+```python
+python DL4SAI/main.py
+```
+## Running NKSR Only
+```python
+conda run -n <nksr_env_name> python '<path-to-project>/DL4SAI/DL4SAI/modules/densify_pipeline/nksr_adapter.py' <path-to-pointcloud.npz> <std-of-noise> <alpha> <use-GPU>  '<path-to-project>/DL4SAI/submodules/NKSR/examples' <path-to-normals.pt> <verbose> <device>
+```
